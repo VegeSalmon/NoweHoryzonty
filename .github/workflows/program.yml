@@ -1,0 +1,22 @@
+name: odswiez program
+on:
+  schedule:
+    - cron: "0 4 * * *"     # codziennie o 4:00 UTC
+  workflow_dispatch:         # i na żądanie, przyciskiem w zakładce Actions
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: pobierz program festiwalu
+        run: curl -sf https://www.nowehoryzonty.pl/open-api/program -o program.json
+      - name: zapisz, jesli sie zmienil
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add program.json
+          git diff --staged --quiet || git commit -m "program: aktualizacja"
+          git push
+
