@@ -105,6 +105,17 @@ main{padding:0 14px 110px}
 .prow{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:7px}
 .prow .ti{font-weight:700;font-size:14px}
 .prow .mi{font-size:11.5px;color:var(--dim);margin-top:2px}
+.prowMain{cursor:pointer}
+.prowBtns{display:flex;gap:8px;margin-top:8px}
+.opisBtn,.addBtn{background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:9px;padding:5px 11px;font-family:inherit;font-size:12px;font-weight:600}
+.addBtn{color:var(--acc);border-color:#3a2a33}
+.opis{margin-top:9px;font-size:12.5px;line-height:1.5;color:var(--dim);border-left:2px solid var(--line);padding-left:10px}
+.opisWrap{margin:2px 0 4px;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:2px 10px}
+.opisWrap summary{font-size:12.5px;font-weight:700;color:var(--dim);padding:8px 0;cursor:pointer;list-style:none}
+.opisWrap summary::-webkit-details-marker{display:none}
+.opisWrap summary::before{content:"opis ▾ ";color:var(--faint)}
+.opisWrap[open] summary::before{content:"opis ▴ "}
+.opisTxt{font-size:12.5px;line-height:1.5;color:var(--dim);padding:0 0 10px}
 .secdot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:baseline}
 /* ---------- tabs ---------- */
 nav{
@@ -163,7 +174,7 @@ textarea.in{resize:vertical;min-height:54px;font-size:13.5px}
 <body>
 <header>
   <div class="brand">
-    <h1>nh26 <em>·</em> planer <span style="font-size:11px;color:var(--faint);font-weight:600">v9</span></h1>
+    <h1>nh26 <em>·</em> planer <span style="font-size:11px;color:var(--faint);font-weight:600">v10</span></h1>
     <div class="syncwrap"><span id="saveDot" title="zapis"></span><button id="syncBtn">⟳ program</button></div>
   </div>
   <div class="days" id="dayRail"></div>
@@ -361,12 +372,18 @@ function save(){
 }
 
 /* ============ program NH (open api / wklejony json) ============ */
+function pickDesc(t){
+  const cand = [t.opis, t.opisPl, t.description, t.tresc, t.synopsis, t.streszczenie, t.zajawka, t.leadPl, t.lead];
+  for(const c of cand){ if(typeof c === "string" && c.trim().length > 20) return c.trim(); }
+  return "";
+}
 function slim(data){
   return {
     sekcje: (data.sekcje||[]).map(s=>({id:s.id, nazwa:s.nazwa, kolor:s.kolor})),
     tytuly: (data.tytuly||[]).filter(t=>t.film!==false).map(t=>({
       slug:t.slug, tytulPl:t.tytulPl, tytulOrg:t.tytulOrg, tytulEn:t.tytulEn,
-      rezyser:t.rezyser, rok:t.rok, czasTrwania:t.czasTrwania, glownaSekcja:t.glownaSekcja,
+      rezyser:t.rezyser, rok:t.rok, kraj:t.kraj||t.kraje||t.produkcja||"", czasTrwania:t.czasTrwania, glownaSekcja:t.glownaSekcja,
+      opis: pickDesc(t),
       sekcje:(t.sekcje||[]).map(s=>({id:s.id, glowna:s.glowna})),
       seanse:(t.seanse||[]).map(s=>({sala:s.sala, dataCzas:s.dataCzas}))
     }))
@@ -422,6 +439,9 @@ function enrich(){
     const t = findTitle(en.mt||en.title);
     if(!t) return;
     if(t.czasTrwania) en.runtime = Math.round(t.czasTrwania);
+    if(t.opis && !en.opis) en.opis = t.opis;
+    if(t.rezyser && !en.rezyser) en.rezyser = t.rezyser;
+    if(t.slug && !en.slug) en.slug = t.slug;
     const alts = (t.seanse||[]).map(s=>{ const dt=apiDT(s.dataCzas); return dt?{date:dt.date,time:dt.time,venue:s.sala}:null; }).filter(Boolean);
     if(alts.length) en.alts = alts;
     if(!en.date && alts.length===1){ en.note = (en.note?en.note+" · ":"")+"znaleziono jedyny seans — wybierz go w edycji"; }
@@ -511,6 +531,7 @@ function offerMoves(target){
 
 /* ============ synchronizacja dwóch urządzeń ============ */
 function saveSync(){ rawSet("nh26-sync", JSON.stringify({url:sync.url, room:sync.room})).catch(()=>{}); }
+const BLOB_BASE = "https://jsonblob.com/api/jsonBlob";
 function isBlob(u){ return /jsonblob\.com/i.test(u||""); }
 function syncEndpoint(){
   const base = sync.url.replace(/\/+$/,"");
@@ -527,7 +548,7 @@ async function createRoom(){
   const loc = res.headers.get("Location") || res.headers.get("location") || "";
   const id = (loc.split("/").pop()||"").trim();
   if(!id) throw new Error("serwis nie oddał adresu pokoju");
-  sync.url = "https://jsonblob.com/api/jsonBlob"; sync.room = id; sync.on = true; saveSync(); syncStamp();
+  sync.url = BLOB_BASE; sync.room = id; sync.on = true; saveSync(); syncStamp();
   return id;
 }
 function mergeState(remote){
@@ -678,15 +699,20 @@ function renderFilmy(){
       <input type="file" id="planFile" accept=".json,application/json,text/plain" style="display:none"></label>
     <textarea class="in" id="impPlan" style="margin-top:8px" placeholder="albo wklej plan z drugiego telefonu"></textarea>
     <div class="btnrow" style="margin-top:8px"><button class="btn gho" id="impPlanBtn">wczytaj z wklejonego</button></div>`;
-  h += `<div class="sec">synchronizacja z drugą osobą${sync.on?" — włączona"+(sync.last?", ostatnio "+sync.last:""):""}</div>
-    <input class="in" id="syncUrl" placeholder="adres backendu (https://…workers.dev)" value="${sync.url||""}">
-    <input class="in" id="syncRoom" style="margin-top:8px" placeholder="kod pokoju — ten sam u obu osób" value="${sync.room||""}">
-    <div class="btnrow" style="margin-top:8px">
-      <button class="btn gho" id="syncSave">${sync.on?"zapisz i odśwież":"połącz"}</button>
-      ${sync.on?`<button class="btn gho" id="syncOff">rozłącz</button>`:""}
-    </div>
-    ${sync.on?"":`<div class="btnrow" style="margin-top:8px"><button class="btn pri" id="syncNew">utwórz pokój (bez konta)</button></div>
-    <div class="banner" style="margin:8px 0 0">tworzy wspólny pokój na darmowym magazynie jsonblob.com — bez rejestracji. dostaniesz kod, który podajesz drugiej osobie. kto zna kod, ten widzi plan, więc nie wrzucaj go publicznie.</div>`}`;
+  if(sync.on){
+    h += `<div class="sec">synchronizacja — włączona${sync.last?", ostatnio "+sync.last:""}</div>
+      <div class="banner">kod pokoju: <b>${sync.room}</b><br>druga osoba wpisuje ten sam kod u siebie. kto go zna, widzi plan — nie wrzucaj go publicznie.</div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn gho" id="syncCopy">skopiuj kod</button>
+        <button class="btn gho" id="syncOff">rozłącz</button>
+      </div>`;
+  } else {
+    h += `<div class="sec">synchronizacja z drugą osobą</div>
+      <div class="banner">chcesz ten sam plan na dwóch telefonach? jedna osoba tworzy pokój i dostaje kod, druga ten kod wpisuje. zmiany lecą w obie strony.</div>
+      <div class="btnrow" style="margin-top:8px"><button class="btn pri" id="syncNew">utwórz nowy pokój</button></div>
+      <input class="in" id="syncRoom" style="margin-top:12px" placeholder="albo wpisz kod, który dostałeś">
+      <div class="btnrow" style="margin-top:8px"><button class="btn gho" id="syncJoin">połącz kodem</button></div>`;
+  };
   h += `<div class="sec">diagnostyka</div>
     <div class="btnrow" style="margin-top:0"><button class="btn gho" id="apiTest">sprawdź, czy API festiwalu odpowiada</button></div>`;
   return h;
@@ -703,9 +729,15 @@ function progList(q){
     const kol = sek && secById[sek.id] ? secById[sek.id].kolor : "#555";
     const cnt = (t.seanse||[]).length;
     const inPlan = have.has(nrm(t.tytulPl));
-    return `<div class="prow" data-slug="${t.slug}">
-      <div class="ti">${t.tytulPl}${inPlan?' <span class="chip kupione">w planie</span>':""}</div>
-      <div class="mi"><span class="secdot" style="background:${kol}"></span>${t.glownaSekcja||""} · ${t.rezyser||""} ${t.czasTrwania?"· "+Math.round(t.czasTrwania)+" min":""} · ${cnt} seans${cnt===1?"":cnt<5?"e":"ów"}</div>
+    const opis = t.opis ? `<div class="opis" data-op="${t.slug}" style="display:none">${t.opis}</div>` : "";
+    const opisBtn = t.opis ? `<button class="opisBtn" data-op="${t.slug}">opis ▾</button>` : "";
+    return `<div class="prow">
+      <div data-slug="${t.slug}" class="prowMain">
+        <div class="ti">${t.tytulPl}${inPlan?' <span class="chip kupione">w planie</span>':""}</div>
+        <div class="mi"><span class="secdot" style="background:${kol}"></span>${t.glownaSekcja||""} · ${t.rezyser||""} ${t.kraj?"· "+t.kraj:""} ${t.czasTrwania?"· "+Math.round(t.czasTrwania)+" min":""} · ${cnt} seans${cnt===1?"":cnt<5?"e":"ów"}</div>
+      </div>
+      <div class="prowBtns">${opisBtn}<button class="addBtn" data-slug="${t.slug}">+ dodaj</button></div>
+      ${opis}
     </div>`;
   }).join("");
 }
@@ -748,40 +780,42 @@ function render(){
     if(!Array.isArray(d.entries)){ alert("ten plik to nie plan"); return; }
     entries = d.entries; uid = d.uid||900; applyPatch(); save(); render();
   });
-  const ss = $("#syncSave");
-  if(ss) ss.onclick = async ()=>{
-    const u = ($("#syncUrl").value||"").trim(), r = ($("#syncRoom").value||"").trim();
-    if(!u || !r){ alert("podaj adres backendu i kod pokoju"); return; }
-    sync.url = u; sync.room = r; sync.on = true; saveSync();
-    try{
-      const res = await fetch(syncEndpoint(), {cache:"no-store"});
-      if(!res.ok) throw new Error("http "+res.status);
-      const remote = await res.json();
-      if(Array.isArray(remote.entries) && remote.entries.length
-         && confirm("w tym pokoju jest już plan ("+remote.entries.length+" pozycji). wczytać go zamiast twojego?")){
-        entries = remote.entries; tomb = remote.tomb||{}; uid = Math.max(uid, remote.uid||0); applyPatch();
-      }
-      syncStamp(); save(); render();
-      alert("połączono. druga osoba wpisuje ten sam adres i kod.");
-    }catch(e){
-      sync.on = false; saveSync(); render();
-      alert("nie udało się połączyć: "+e.message);
-    }
-  };
   const sn = $("#syncNew");
   if(sn) sn.onclick = async ()=>{
     sn.textContent = "tworzę…";
     try{
       const id = await createRoom();
       render();
-      alert("pokój gotowy.\n\nkod: "+id+"\n\ndruga osoba wpisuje adres https://jsonblob.com/api/jsonBlob i ten kod, a potem zgadza się na wczytanie planu z pokoju.");
+      alert("pokój gotowy. twój kod:\n\n"+id+"\n\npodaj go drugiej osobie — wpisuje go u siebie w to samo miejsce i klika połącz kodem.");
     }catch(e){
-      sn.textContent = "utwórz pokój (bez konta)";
-      alert("nie udało się utworzyć pokoju: "+e.message+"\n\njeśli apka jest otwarta z pliku na dysku, spróbuj po wystawieniu jej na stronę albo postaw własny backend.");
+      sn.textContent = "utwórz nowy pokój";
+      alert("nie udało się utworzyć pokoju: "+e.message);
     }
   };
+  const sj = $("#syncJoin");
+  if(sj) sj.onclick = async ()=>{
+    const code = ($("#syncRoom").value||"").trim();
+    if(!code){ alert("wpisz kod, który dostałeś"); return; }
+    sync.url = BLOB_BASE; sync.room = code; sync.on = true; saveSync();
+    try{
+      const res = await fetch(syncEndpoint(), {cache:"no-store"});
+      if(!res.ok) throw new Error(res.status===404 ? "nie ma pokoju o tym kodzie" : "http "+res.status);
+      const remote = await res.json();
+      if(Array.isArray(remote.entries) && remote.entries.length
+         && confirm("w tym pokoju jest plan ("+remote.entries.length+" pozycji). wczytać go? (twój obecny zostanie zastąpiony)")){
+        entries = remote.entries; tomb = remote.tomb||{}; uid = Math.max(uid, remote.uid||0); applyPatch();
+      }
+      syncStamp(); save(); render();
+      alert("połączono. od teraz plan jest wspólny.");
+    }catch(e){
+      sync.on = false; saveSync(); render();
+      alert("nie udało się połączyć: "+e.message);
+    }
+  };
+  const scp = $("#syncCopy");
+  if(scp) scp.onclick = ()=>{ try{ navigator.clipboard.writeText(sync.room); alert("kod skopiowany"); }catch(e){ alert("kod: "+sync.room); } };
   const so = $("#syncOff");
-  if(so) so.onclick = ()=>{ sync.on = false; sync.url=""; sync.room=""; saveSync(); render(); };
+  if(so) so.onclick = ()=>{ if(confirm("rozłączyć synchronizację? plan zostanie na tym telefonie, ale przestanie się wymieniać z drugą osobą.")){ sync.on = false; sync.url=""; sync.room=""; saveSync(); render(); } };
   const at = $("#apiTest");
   if(at) at.onclick = async ()=>{
     at.textContent = "sprawdzam…";
@@ -822,7 +856,15 @@ function render(){
   bindProg();
 }
 function bindProg(){
-  document.querySelectorAll(".prow").forEach(el=>el.onclick=()=>openFromProgram(el.dataset.slug));
+  document.querySelectorAll(".prowMain, .addBtn").forEach(el=>el.onclick=()=>openFromProgram(el.dataset.slug));
+  document.querySelectorAll(".opisBtn").forEach(el=>el.onclick=(ev)=>{
+    ev.stopPropagation();
+    const box = document.querySelector('.opis[data-op="'+el.dataset.op+'"]');
+    if(!box) return;
+    const show = box.style.display==="none";
+    box.style.display = show ? "block" : "none";
+    el.textContent = show ? "opis ▴" : "opis ▾";
+  });
 }
 function readFile(input, cb){
   input.onchange = ()=>{
@@ -860,7 +902,8 @@ function openEdit(id){
   sheetState = {mode:"edit", id, date:e.date, time:e.time, venue:e.venue};
   openSheet(`
     <h2>${e.title}</h2>
-    <div class="sub">${e.runtime? e.runtime+" min · ":""}dotknij, żeby zmienić</div>
+    <div class="sub">${e.rezyser?e.rezyser+" · ":""}${e.runtime? e.runtime+" min · ":""}dotknij, żeby zmienić</div>
+    ${e.opis?`<details class="opisWrap"><summary>opis filmu</summary><div class="opisTxt">${e.opis}</div></details>`:""}
     <div class="fl">status</div>
     <div class="segs" id="stSegs">
       ${["kupione","dokup","opcja","sprzedac"].map(s=>`<button class="seg ${e.status===s?"sel":""}" data-s="${s}">${{kupione:"kupione",dokup:"do kupienia",opcja:"opcja",sprzedac:"sprzedać"}[s]}</button>`).join("")}
@@ -987,6 +1030,9 @@ function openAdd(pre){
     if(pre.runtime) en.runtime = pre.runtime;
     if(pre.seanse) en.alts = pre.seanse;
     if(pre.mt) en.mt = pre.mt;
+    if(pre.opis) en.opis = pre.opis;
+    if(pre.rezyser) en.rezyser = pre.rezyser;
+    if(pre.slug) en.slug = pre.slug;
     entries.push(en);
     if(en.date && en.time && en.status!=="opcja") offerMoves(en);
     save(); closeSheet(); render();
@@ -996,6 +1042,7 @@ function openFromProgram(slug){
   const t = (program.tytuly||[]).find(x=>x.slug===slug); if(!t) return;
   const seanse = (t.seanse||[]).map(s=>{ const dt=apiDT(s.dataCzas); return dt?{date:dt.date,time:dt.time,venue:s.sala}:null; }).filter(Boolean);
   openAdd({title:t.tytulPl, mt:t.tytulPl, runtime:t.czasTrwania?Math.round(t.czasTrwania):null,
+           opis:t.opis||"", rezyser:t.rezyser||"", slug:t.slug,
            seanse, info:`${t.rezyser||""} ${t.rok?"· "+t.rok:""} ${t.czasTrwania?"· "+Math.round(t.czasTrwania)+" min":""}`});
 }
 
