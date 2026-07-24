@@ -174,7 +174,7 @@ textarea.in{resize:vertical;min-height:54px;font-size:13.5px}
 <body>
 <header>
   <div class="brand">
-    <h1>nh26 <em>·</em> planer <span style="font-size:11px;color:var(--faint);font-weight:600">v10</span></h1>
+    <h1>nh26 <em>·</em> planer <span style="font-size:11px;color:var(--faint);font-weight:600">v11</span></h1>
     <div class="syncwrap"><span id="saveDot" title="zapis"></span><button id="syncBtn">⟳ program</button></div>
   </div>
   <div class="days" id="dayRail"></div>
@@ -532,6 +532,8 @@ function offerMoves(target){
 /* ============ synchronizacja dwóch urządzeń ============ */
 function saveSync(){ rawSet("nh26-sync", JSON.stringify({url:sync.url, room:sync.room})).catch(()=>{}); }
 const BLOB_BASE = "https://jsonblob.com/api/jsonBlob";
+function lastUrl(){ try{ return localStorage.getItem("nh26-lasturl")||""; }catch(e){ return ""; } }
+function rememberUrl(u){ try{ if(u && !isBlob(u)) localStorage.setItem("nh26-lasturl", u); }catch(e){} }
 function isBlob(u){ return /jsonblob\.com/i.test(u||""); }
 function syncEndpoint(){
   const base = sync.url.replace(/\/+$/,"");
@@ -701,17 +703,18 @@ function renderFilmy(){
     <div class="btnrow" style="margin-top:8px"><button class="btn gho" id="impPlanBtn">wczytaj z wklejonego</button></div>`;
   if(sync.on){
     h += `<div class="sec">synchronizacja — włączona${sync.last?", ostatnio "+sync.last:""}</div>
-      <div class="banner">kod pokoju: <b>${sync.room}</b><br>druga osoba wpisuje ten sam kod u siebie. kto go zna, widzi plan — nie wrzucaj go publicznie.</div>
+      <div class="banner">pokój: <b>${sync.room}</b><br>druga osoba wpisuje ten sam adres i ten sam kod. kto zna kod, widzi plan — nie wrzucaj go publicznie.</div>
       <div class="btnrow" style="margin-top:8px">
         <button class="btn gho" id="syncCopy">skopiuj kod</button>
         <button class="btn gho" id="syncOff">rozłącz</button>
       </div>`;
   } else {
     h += `<div class="sec">synchronizacja z drugą osobą</div>
-      <div class="banner">chcesz ten sam plan na dwóch telefonach? jedna osoba tworzy pokój i dostaje kod, druga ten kod wpisuje. zmiany lecą w obie strony.</div>
-      <div class="btnrow" style="margin-top:8px"><button class="btn pri" id="syncNew">utwórz nowy pokój</button></div>
-      <input class="in" id="syncRoom" style="margin-top:12px" placeholder="albo wpisz kod, który dostałeś">
-      <div class="btnrow" style="margin-top:8px"><button class="btn gho" id="syncJoin">połącz kodem</button></div>`;
+      <div class="banner">wpisz adres swojego backendu (raz — zapamięta się) i wymyślony kod pokoju. druga osoba wpisuje to samo i macie wspólny plan. zmiany lecą w obie strony.</div>
+      <input class="in" id="syncUrl" placeholder="adres backendu (https://…workers.dev)" value="${sync.url||lastUrl()}">
+      <input class="in" id="syncRoom" style="margin-top:8px" placeholder="kod pokoju — dowolny, byle ten sam u obu osób">
+      <div class="btnrow" style="margin-top:8px"><button class="btn pri" id="syncJoin">połącz</button></div>
+      <div class="banner" style="margin-top:10px">nie masz backendu? na jsonblob bez konta kliknij tu — dostaniesz gotowy kod, ale ten darmowy serwis bywa zawodny (limit zapytań).<br><button class="btn gho" id="syncNew" style="margin-top:8px">utwórz pokój na jsonblob (bez konta)</button></div>`;
   };
   h += `<div class="sec">diagnostyka</div>
     <div class="btnrow" style="margin-top:0"><button class="btn gho" id="apiTest">sprawdź, czy API festiwalu odpowiada</button></div>`;
@@ -795,8 +798,11 @@ function render(){
   const sj = $("#syncJoin");
   if(sj) sj.onclick = async ()=>{
     const code = ($("#syncRoom").value||"").trim();
-    if(!code){ alert("wpisz kod, który dostałeś"); return; }
-    sync.url = BLOB_BASE; sync.room = code; sync.on = true; saveSync();
+    let url = ($("#syncUrl") ? $("#syncUrl").value : "").trim();
+    if(!code){ alert("wpisz kod pokoju"); return; }
+    if(!url){ alert("wpisz adres backendu (albo użyj przycisku jsonblob niżej)"); return; }
+    if(isBlob(url)) url = BLOB_BASE;
+    sync.url = url; sync.room = code; sync.on = true; saveSync(); rememberUrl(url);
     try{
       const res = await fetch(syncEndpoint(), {cache:"no-store"});
       if(!res.ok) throw new Error(res.status===404 ? "nie ma pokoju o tym kodzie" : "http "+res.status);
