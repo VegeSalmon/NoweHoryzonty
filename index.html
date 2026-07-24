@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>nh26 · planer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161c; --panel:#1d212b; --panel2:#242938; --line:#2e3446;
+  --ink:#e9e6dc; --dim:#9aa0b0; --faint:#6b7183;
+  --ok:#6fd08c; --buy:#f2b64a; --opt:#8b93a7; --sell:#ff6b6b; --acc:#d6587f;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:'Archivo',system-ui,-apple-system,sans-serif;
+  font-size:15px; line-height:1.4; overscroll-behavior-y:contain;
+}
+/* ---------- header ---------- */
+header{
+  position:sticky;top:0;z-index:30;background:linear-gradient(var(--bg) 75%,rgba(20,22,28,0));
+  padding:12px 14px 6px;
+}
+.brand{display:flex;align-items:baseline;justify-content:space-between}
+.brand h1{
+  font-size:19px;font-weight:900;font-stretch:112%;letter-spacing:.5px;text-transform:lowercase;
+}
+.brand h1 em{color:var(--acc);font-style:normal}
+.syncwrap{display:flex;align-items:center;gap:8px}
+#syncBtn{
+  background:var(--panel);border:1px solid var(--line);color:var(--dim);
+  border-radius:20px;padding:5px 12px;font-size:12px;font-family:inherit;font-weight:600;
+}
+#syncBtn.on{color:var(--ok);border-color:#2f5340}
+#syncBtn.err{color:var(--buy)}
+#saveDot{width:7px;height:7px;border-radius:50%;background:var(--faint);transition:background .3s}
+#saveDot.ok{background:var(--ok)} #saveDot.err{background:var(--sell)}
+/* day rail */
+.days{display:flex;gap:6px;overflow-x:auto;padding:10px 0 8px;scrollbar-width:none}
+.days::-webkit-scrollbar{display:none}
+.day{
+  flex:0 0 auto;min-width:52px;text-align:center;padding:6px 4px;border-radius:10px;
+  border:1px solid var(--line);background:var(--panel);color:var(--dim);
+}
+.day .dw{font-size:10px;text-transform:lowercase;letter-spacing:1px}
+.day .dn{font-size:16px;font-weight:800;font-family:var(--mono)}
+.day .ct{font-size:9px;color:var(--faint)}
+.day.sel{background:var(--acc);border-color:var(--acc);color:#fff}
+.day.sel .ct{color:#ffd7e4}
+.day.today{box-shadow:inset 0 0 0 1px var(--acc)}
+.day.warn .ct{color:var(--sell);font-weight:700}
+/* ---------- banners ---------- */
+.banner{margin:0 14px 10px;padding:9px 12px;border-radius:10px;font-size:12.5px;background:var(--panel);border:1px solid var(--line);color:var(--dim)}
+.banner.warn{border-color:#5a3535;color:#ffb3b3}
+/* ---------- listy ---------- */
+main{padding:0 14px 110px}
+.sec{margin:14px 0 6px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--faint);font-weight:700}
+/* karta seansu = odcinek biletu z perforacją po lewej */
+.card{
+  position:relative;display:flex;gap:10px;align-items:stretch;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:10px 12px 10px 18px;margin-bottom:8px;
+}
+.card::before{ /* perforacja */
+  content:"";position:absolute;left:7px;top:8px;bottom:8px;width:2px;
+  background-image:radial-gradient(circle,var(--line) 1.1px,transparent 1.3px);
+  background-size:2px 7px;background-repeat:repeat-y;
+}
+.card .t{
+  width:52px;flex:0 0 auto;font-family:var(--mono);font-weight:700;font-size:15px;
+  display:flex;flex-direction:column;justify-content:center;
+}
+.card .t small{font-weight:400;font-size:10px;color:var(--faint)}
+.card .b{flex:1;min-width:0}
+.card .ti{font-weight:700;font-size:14.5px;overflow-wrap:anywhere}
+.card .mi{font-size:11.5px;color:var(--dim);margin-top:2px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.chip{font-size:10px;font-weight:700;padding:2px 7px;border-radius:9px;letter-spacing:.4px;text-transform:lowercase}
+.chip.kupione{background:#1e3a2a;color:var(--ok)}
+.chip.dokup{background:#3d3212;color:var(--buy)}
+.chip.opcja{background:#272c39;color:var(--opt)}
+.chip.sprzedac{background:#3d2020;color:var(--sell)}
+.chip.osoba{background:transparent;border:1px solid var(--line);color:var(--dim)}
+.conf{font-size:10.5px;color:var(--sell);font-weight:700;margin-top:3px}
+.conf.soft{color:var(--buy);font-weight:600}
+.card.s-sprzedac{opacity:.75}
+.card.s-opcja{border-style:dashed;background:transparent}
+.card.past{opacity:.45}
+/* zakupy */
+.buyrow{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.buyrow .cb{
+  width:26px;height:26px;flex:0 0 auto;border-radius:8px;border:2px solid var(--buy);
+  display:flex;align-items:center;justify-content:center;font-weight:900;color:transparent;
+}
+.buyrow.done .cb{background:#1e3a2a;border-color:var(--ok);color:var(--ok)}
+.buyrow .inf{flex:1;min-width:0}
+.buyrow .inf .ti{font-weight:700;font-size:14px}
+.buyrow .inf .mi{font-size:11.5px;color:var(--dim);font-family:var(--mono)}
+/* filmy / program */
+.search{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:12px;color:var(--ink);font-family:inherit;font-size:15px;padding:11px 13px;margin:8px 0}
+.search:focus{outline:none;border-color:var(--acc)}
+.prow{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:7px}
+.prow .ti{font-weight:700;font-size:14px}
+.prow .mi{font-size:11.5px;color:var(--dim);margin-top:2px}
+.secdot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:baseline}
+/* ---------- tabs ---------- */
+nav{
+  position:fixed;bottom:0;left:0;right:0;z-index:30;display:flex;
+  background:rgba(20,22,28,.94);backdrop-filter:blur(8px);border-top:1px solid var(--line);
+  padding:6px 8px calc(10px + env(safe-area-inset-bottom));
+}
+nav button{
+  flex:1;background:none;border:none;color:var(--faint);font-family:inherit;
+  font-size:12px;font-weight:700;padding:9px 0;border-radius:10px;letter-spacing:.5px;text-transform:lowercase;
+}
+nav button.sel{color:var(--acc)}
+#fab{
+  position:fixed;right:16px;bottom:calc(66px + env(safe-area-inset-bottom));z-index:29;
+  width:52px;height:52px;border-radius:16px;border:none;background:var(--acc);color:#fff;
+  font-size:26px;font-weight:400;box-shadow:0 6px 18px rgba(0,0,0,.45);
+}
+/* ---------- sheet ---------- */
+#ov{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40;display:none}
+#sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:41;display:none;
+  background:var(--panel2);border-radius:18px 18px 0 0;max-height:86vh;overflow-y:auto;
+  padding:16px 16px calc(20px + env(safe-area-inset-bottom));
+}
+#sheet h2{font-size:17px;font-weight:800;margin-bottom:2px}
+#sheet .sub{font-size:12px;color:var(--dim);margin-bottom:12px}
+.fl{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);font-weight:700;margin:14px 0 6px}
+.segs{display:flex;flex-wrap:wrap;gap:7px}
+.seg{
+  background:var(--panel);border:1px solid var(--line);color:var(--dim);border-radius:10px;
+  padding:8px 13px;font-family:inherit;font-size:13px;font-weight:700;text-transform:lowercase;
+}
+.seg.sel{border-color:var(--acc);color:var(--ink);background:#332430}
+.slist .sopt{
+  width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);color:var(--ink);
+  border-radius:10px;padding:9px 12px;font-family:var(--mono);font-size:13px;margin-bottom:6px;
+}
+.slist .sopt.sel{border-color:var(--acc)}
+.slist .sopt .tag{float:right;font-family:'Archivo',sans-serif;font-size:10.5px;font-weight:700}
+.tag.free{color:var(--ok)} .tag.busy{color:var(--sell)}
+.inrow{display:flex;gap:8px}
+.in{
+  flex:1;background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--ink);
+  font-family:inherit;font-size:15px;padding:10px 12px;width:100%;
+}
+textarea.in{resize:vertical;min-height:54px;font-size:13.5px}
+.in:focus{outline:none;border-color:var(--acc)}
+.btnrow{display:flex;gap:8px;margin-top:18px}
+.btn{flex:1;border:none;border-radius:12px;padding:13px;font-family:inherit;font-size:15px;font-weight:800}
+.btn.pri{background:var(--acc);color:#fff}
+.btn.gho{background:var(--panel);color:var(--dim);border:1px solid var(--line)}
+.btn.del{background:#3d2020;color:var(--sell)}
+.empty{color:var(--faint);font-size:13px;text-align:center;padding:30px 10px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>nh26 <em>·</em> planer <span style="font-size:11px;color:var(--faint);font-weight:600">v9</span></h1>
+    <div class="syncwrap"><span id="saveDot" title="zapis"></span><button id="syncBtn">⟳ program</button></div>
+  </div>
+  <div class="days" id="dayRail"></div>
+</header>
+<div id="banners"></div>
+<main id="main"></main>
+<button id="fab" title="dodaj film">+</button>
+<nav>
+  <button data-tab="plan" class="sel">plan</button>
+  <button data-tab="zakupy">zakupy</button>
+  <button data-tab="filmy">filmy</button>
+</nav>
+<div id="ov"></div>
+<div id="sheet"></div>
+
+<script>
+/* ============ dane startowe (plan z 24.07, zweryfikowany z kalendarzem NH) ============ */
+const FEST_DAYS = ["2026-07-24","2026-07-25","2026-07-26","2026-07-27","2026-07-28","2026-07-29","2026-07-30","2026-07-31","2026-08-01","2026-08-02"];
+const DOW = {"2026-07-24":"pt","2026-07-25":"sb","2026-07-26":"nd","2026-07-27":"pn","2026-07-28":"wt","2026-07-29":"śr","2026-07-30":"cz","2026-07-31":"pt","2026-08-01":"sb","2026-08-02":"nd"};
+let uid = 1; const nid = () => "e" + (uid++);
+function E(title, status, date, time, venue, note, mt, alts){
+  return {id:nid(), title, status, person:"oboje", date:date||null, time:time||null, venue:venue||null,
+          note:note||"", mt:mt||null, runtime:null, alts:alts||[], m:0};
+}
+const SEED = [
+  // kupione
+  E("Levers","kupione",null,null,null,"bilet jest — uzupełnij termin (dopasuj z programu)"),
+  E("Pływacy","kupione",null,null,null,"bilet jest — uzupełnij termin"),
+  E("Dzień, w którym ona wraca","kupione",null,null,null,"bilet jest — uzupełnij termin"),
+  E("Krwawa Hrabina","kupione","2026-07-25","21:45",null,"Ottinger, z Huppert — sala do uzupełnienia"),
+  E("Leviticus — bilet sb","sprzedac","2026-07-25","22:30",null,"spalony (kolizja z Krwawą Hrabiną) — odsprzedaj","Leviticus"),
+  E("Leviticus","dokup","2026-07-29","22:15","KNH 9","odkup po sprzedaży sobotniego"),
+  E("Gąska","kupione","2026-07-26","18:45","KNH 2","do decyzji: sprzedać i odkupić na pn 13:00, żeby wszedł Exotic",null,
+    [{date:"2026-07-27",time:"13:00",venue:"KNH 2"}]),
+  E("Spadający liść","kupione","2026-07-27","10:15","KNH 6"),
+  E("9 świątyń w drodze do nieba","kupione","2026-07-28","12:15","KNH 7"),
+  E("Bagno","kupione","2026-07-29","16:00","DCF"),
+  E("W gorsecie","kupione","2026-07-30","15:45","KNH 8"),
+  E("Jak przycinać róże","kupione","2026-07-30","19:00","KNH 8"),
+  // do kupienia (plan)
+  E("Exotic","dokup","2026-07-26","18:45","KNH 1","jedyny seans na festiwalu — wymaga sprzedaży Gąski z tego slotu"),
+  E("Ktoś we mnie","dokup","2026-07-26","21:45","KNH 1"),
+  E("Karuzela","dokup","2026-07-28","09:45","KNH 1"),
+  E("Papierowy tygrys","dokup","2026-07-30","09:45","KNH 1"),
+  E("Ocalenie","dokup","2026-07-31","12:45","KNH 1"),
+  E("Everytime","dokup","2026-07-31","18:45","KNH 7"),
+  E("Barrio triste","dokup","2026-07-31","21:45","KNH 7"),
+  E("Zawiany las","dokup","2026-08-01","09:45","KNH 7",null,null,[{date:"2026-07-26",time:"18:45",venue:"KNH 7"}]),
+  E("Daleko od brzegu","dokup","2026-08-01","16:00","KNH 8"),
+  E("Natura miłości","dokup","2026-08-02","13:15","KNH 9"),
+  // opcje
+  E("Adopcja","opcja","2026-07-27","16:00","KNH 2","Mészáros"),
+  E("Owoce rajskich drzew","opcja","2026-07-27","19:00","KNH 2","Chytilová",null,[{date:"2026-07-30",time:"22:00",venue:"KNH 2"}]),
+  E("Madame X","opcja","2026-07-27","21:45","DCF Lwów","Ottinger"),
+  E("Dziewięć miesięcy","opcja","2026-07-28","19:00","KNH 2","Mészáros"),
+  E("Portret pijaczki","opcja","2026-07-28","22:00","DCF Lalka","Ottinger"),
+  E("Mongolska Joanna d'Arc","opcja","2026-07-29","09:45","DCF Lwów","Ottinger"),
+  E("Prater","opcja","2026-07-29","13:15","DCF Lwów","Ottinger"),
+  E("Lola Montès","opcja","2026-07-29","19:00","KNH 8"),
+  E("Lech Janerka: śpij śpij inteligencie","opcja","2026-08-02","16:00","KNH 8"),
+  // chciane, bez terminu
+  E("Wolfgang","dokup",null,null,null,"bez terminu — dopasuj z programu"),
+  E("Dryfy","dokup",null,null,null,"bez terminu — dopasuj z programu"),
+  E("Człowiek epoki","dokup",null,null,null,"bez terminu — dopasuj z programu"),
+  E("Gruber nas opuszcza","dokup",null,null,null,"bez terminu — dopasuj z programu"),
+];
+
+/* ==== łatka danych: seanse i czasy trwania zebrane ze strony NH 24.07 ==== */
+const PATCH = [
+ {mt:"Levers", date:"2026-07-24", time:"13:15", venue:"KNH 3", runtime:95, replaceNote:true,
+  alts:[{date:"2026-07-24",time:"13:15",venue:"KNH 3"},{date:"2026-07-29",time:"10:15",venue:"KNH 3"},{date:"2026-08-01",time:"19:15",venue:"KNH 3"}],
+  note:"zakładam bilet na pt 24.07 13:15 — sprawdź; grany w zestawie z Pure Reason; inne seanse: śr 10:15, sb 19:15"},
+ {mt:"Pływacy", date:"2026-07-24", time:"16:15", venue:"KNH 6", runtime:76, replaceNote:true,
+  alts:[{date:"2026-07-24",time:"16:15",venue:"KNH 6"},{date:"2026-07-28",time:"22:15",venue:"KNH 6"},{date:"2026-07-30",time:"22:30",venue:"KNH 5"}],
+  note:"zakładam bilet na pt 24.07 16:15 — sprawdź; inne seanse: wt 22:15, cz 22:30"},
+ {mt:"Dzień, w którym ona wraca", date:"2026-07-24", time:"19:15", venue:"KNH 9", runtime:84, replaceNote:true,
+  alts:[{date:"2026-07-24",time:"19:15",venue:"KNH 9"},{date:"2026-07-29",time:"12:45",venue:"KNH 1"},{date:"2026-08-02",time:"10:15",venue:"KNH 9"}],
+  note:"zakładam bilet na pt 24.07 19:15 — sprawdź; inne seanse: śr 12:45, nd 10:15"},
+ {mt:"Krwawa Hrabina", venue:"KNH 4"},
+ {mt:"Wolfgang", date:"2026-07-26", time:"13:15", venue:"KNH 3", replaceNote:true,
+  alts:[{date:"2026-07-25",time:"19:15",venue:"KNH 3"},{date:"2026-07-26",time:"13:15",venue:"KNH 3"}],
+  note:"proponowany nd 13:15 (bez kolizji); alternatywa sb 19:15"},
+ {mt:"Dryfy", date:"2026-07-31", time:"15:45", venue:"KNH 7", runtime:104, replaceNote:true,
+  alts:[{date:"2026-07-27",time:"09:45",venue:"KNH 7"},{date:"2026-07-31",time:"15:45",venue:"KNH 7"}],
+  note:"proponowany pt 31.07 15:45; pn 27 rano koliduje ze Spadającym liściem"},
+ {mt:"Człowiek epoki", date:"2026-07-28", time:"16:00", venue:"KNH 9", runtime:155, replaceNote:true,
+  alts:[{date:"2026-07-28",time:"16:00",venue:"KNH 9"},{date:"2026-07-30",time:"16:00",venue:"KNH 9"},{date:"2026-08-01",time:"14:15",venue:"KNH 1"}],
+  note:"proponowany wt 28.07 16:00; 30.07 i 1.08 kolidują z planem"},
+ {mt:"Gruber nas opuszcza", date:"2026-07-25", time:"12:45", venue:"DCF Lwów", runtime:105, replaceNote:true,
+  note:"sb 25.07 12:45 — jedyny znaleziony termin"},
+ {mt:"Bagno", venue:"DCF Warszawa", runtime:102},
+ {mt:"9 świątyń", runtime:140},
+ {mt:"Exotic", runtime:93, note:"online wyprzedane (stan 24.07) — kolejka last-minute z kartą Open Ticket"},
+ {mt:"Everytime", runtime:121, note:"wszystkie seanse wyprzedane online (stan 24.07) — last-minute"},
+ {mt:"Barrio triste", runtime:84, note:"wyprzedane online (stan 24.07) — last-minute"},
+ {mt:"Daleko od brzegu", runtime:121,
+  alts:[{date:"2026-07-27",time:"10:15",venue:"KNH 9"},{date:"2026-07-30",time:"19:45",venue:"KNH 1"},{date:"2026-08-01",time:"16:00",venue:"KNH 8"}],
+  note:"1.08 wyprzedane online (stan 24.07) — last-minute; 30.07 koliduje z Jak przycinać róże"},
+ {mt:"Ktoś we mnie", alts:[{date:"2026-07-25",time:"18:45",venue:"KNH 1"},{date:"2026-07-26",time:"21:45",venue:"KNH 1"}]},
+ {mt:"Karuzela", alts:[{date:"2026-07-25",time:"13:00",venue:"KNH 1"},{date:"2026-07-28",time:"09:45",venue:"KNH 1"}]},
+ {mt:"Adopcja", runtime:87},
+ {mt:"Dziewięć miesięcy", runtime:94},
+ {mt:"W gorsecie", runtime:114},
+];
+function applyPatch(){
+  let changed = false;
+  PATCH.forEach(p=>{
+    const pb = nrm(p.mt);
+    const e = entries.find(x=>{ const a = nrm(x.mt||x.title); return a.includes(pb)||pb.includes(a); });
+    if(!e) return;
+    if(p.runtime && !e.runtime){ e.runtime = p.runtime; changed = true; }
+    if(p.venue && (!e.venue || p.venue.length > e.venue.length)){ e.venue = p.venue; changed = true; }
+    if(p.date && !e.date){ e.date = p.date; e.time = p.time||e.time; if(p.venue) e.venue = p.venue; changed = true; }
+    if(p.alts){ p.alts.forEach(a=>{ e.alts = e.alts||[]; if(!e.alts.some(x=>x.date===a.date&&x.time===a.time)){ e.alts.push(a); changed = true; } }); }
+    if(p.note && !(e.note||"").includes(p.note)){
+      e.note = p.replaceNote ? p.note : (e.note ? e.note+" · "+p.note : p.note);
+      changed = true;
+    }
+  });
+  if(changed) save();
+}
+
+/* ============ stan ============ */
+let entries = [];
+let tomb = {};           // id -> czas usunięcia
+let devId = "";
+let sync = {url:"", room:"", on:false, last:"", busy:false};
+let program = null;      // {tytuly:[...], sekcje:[...]} z api
+let secById = {};
+let tab = "plan";
+let selDay = null;       // yyyy-mm-dd lub null = wszystkie
+let storageOK = true;
+const $ = s => document.querySelector(s);
+const now = () => Date.now();
+function touch(e){ e.m = now(); }
+function newId(){ return devId + "-" + (uid++); }
+
+/* ============ utils ============ */
+const nrm = s => (s||"").toLowerCase().replace(/ł/g,"l").replace(/Ł/g,"l")
+  .normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+const mins = t => { if(!t) return null; const [h,m]=t.split(":").map(Number); return h*60+m; };
+const vgrp = v => { const x=(v||"").toLowerCase(); if(x.includes("dcf")||x.includes("dolno")) return "dcf"; if(x.includes("knh")||x.includes("nowe horyzonty")) return "knh"; return "inne"; };
+const fmtDay = d => d ? d.slice(8,10)+"."+d.slice(5,7) : "";
+function apiDT(s){ // "dd-MM-yyyy HH:mm" -> {date,time}
+  const m = s && s.match(/^(\d{2})-(\d{2})-(\d{4})[ T](\d{2}:\d{2})/);
+  return m ? {date:`${m[3]}-${m[2]}-${m[1]}`, time:m[4]} : null;
+}
+const todayStr = () => { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+
+/* ============ zapis: claude storage -> localStorage -> pamięć ============ */
+let store = "none";
+function detectStore(){
+  try{ if(window.storage && typeof window.storage.get === "function"){ store = "claude"; return; } }catch(e){}
+  try{ localStorage.setItem("__nh_t","1"); localStorage.removeItem("__nh_t"); store = "local"; return; }catch(e){}
+  store = "none";
+}
+async function rawGet(k){
+  if(store==="claude"){ const r = await window.storage.get(k, true); return r ? r.value : null; }
+  if(store==="local"){ return localStorage.getItem(k); }
+  return null;
+}
+async function rawSet(k,v){
+  if(store==="claude"){ await window.storage.set(k, v, true); return; }
+  if(store==="local"){ localStorage.setItem(k, v); return; }
+  throw new Error("brak magazynu");
+}
+async function load(){
+  let got = false;
+  try{
+    const v = await rawGet("nh26-plan");
+    if(v){ const d = JSON.parse(v); entries = d.entries||[]; uid = d.uid||500; tomb = d.tomb||{}; got = true; }
+  }catch(e){}
+  if(!got){ entries = SEED; uid = 500; save(); }
+  try{
+    const s = await rawGet("nh26-sync");
+    if(s){ const d = JSON.parse(s); sync.url = d.url||""; sync.room = d.room||""; sync.on = !!(d.url && d.room); }
+  }catch(e){}
+  try{
+    const p = await rawGet("nh26-program");
+    if(p) setProgram(JSON.parse(p), true);
+  }catch(e){}
+}
+let saveT = null;
+function save(){
+  clearTimeout(saveT);
+  saveT = setTimeout(async ()=>{
+    try{
+      await rawSet("nh26-plan", JSON.stringify({v:1, uid, entries, tomb}));
+      storageOK = true; const d=$("#saveDot"); if(d) d.className = "ok";
+    }catch(e){
+      storageOK = false; const d=$("#saveDot"); if(d) d.className = "err"; renderBanners();
+    }
+    if(sync.on) syncPush();
+  }, 350);
+}
+
+/* ============ program NH (open api / wklejony json) ============ */
+function slim(data){
+  return {
+    sekcje: (data.sekcje||[]).map(s=>({id:s.id, nazwa:s.nazwa, kolor:s.kolor})),
+    tytuly: (data.tytuly||[]).filter(t=>t.film!==false).map(t=>({
+      slug:t.slug, tytulPl:t.tytulPl, tytulOrg:t.tytulOrg, tytulEn:t.tytulEn,
+      rezyser:t.rezyser, rok:t.rok, czasTrwania:t.czasTrwania, glownaSekcja:t.glownaSekcja,
+      sekcje:(t.sekcje||[]).map(s=>({id:s.id, glowna:s.glowna})),
+      seanse:(t.seanse||[]).map(s=>({sala:s.sala, dataCzas:s.dataCzas}))
+    }))
+  };
+}
+function setProgram(data, quiet, ts){
+  program = data.tytuly && data.sekcje && quiet ? data : slim(data);
+  program.ts = ts || program.ts || new Date().toISOString().slice(0,16).replace("T"," ");
+  secById = {}; (program.sekcje||[]).forEach(s=>secById[s.id]=s);
+  enrich();
+  if(!quiet){ rawSet("nh26-program", JSON.stringify(program)).catch(()=>{}); }
+  const btn = $("#syncBtn"); if(btn){ btn.textContent = "⟳ program ✓"; btn.className = "on"; }
+}
+/* kolejność źródeł: plik obok strony (działa na własnej domenie bez CORS),
+   potem API festiwalu (zadziała, jeśli serwer wystawia Access-Control-Allow-Origin) */
+const SOURCES = ["./program.json", "https://www.nowehoryzonty.pl/open-api/program"];
+async function tryFetch(url){
+  const ctl = new AbortController(); const to = setTimeout(()=>ctl.abort(), 12000);
+  try{
+    const res = await fetch(url, {signal:ctl.signal, cache:"no-store"});
+    if(!res.ok) throw new Error("http "+res.status);
+    const d = await res.json();
+    if(!d || !d.tytuly) throw new Error("zły format");
+    return d;
+  } finally { clearTimeout(to); }
+}
+async function syncProgram(silent){
+  const btn = $("#syncBtn");
+  btn.textContent = "⟳ pobieram…"; btn.className = "";
+  let err = null;
+  for(const url of SOURCES){
+    try{ setProgram(await tryFetch(url)); render(); return; }
+    catch(e){ err = e; }
+  }
+  btn.textContent = program ? "⟳ program ✓" : "⟳ wklej program";
+  btn.className = program ? "on" : "err";
+  if(!silent && !program){
+    tab = "filmy";
+    document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("sel", x.dataset.tab==="filmy"));
+    render();
+  }
+  renderBanners();
+}
+function findTitle(name){
+  if(!program) return null;
+  const q = nrm(name);
+  let hit = (program.tytuly||[]).find(t => nrm(t.tytulPl)===q || nrm(t.tytulOrg)===q || nrm(t.tytulEn)===q);
+  if(!hit) hit = (program.tytuly||[]).find(t => nrm(t.tytulPl).includes(q) || q.includes(nrm(t.tytulPl)));
+  return hit||null;
+}
+function enrich(){
+  entries.forEach(en=>{
+    const t = findTitle(en.mt||en.title);
+    if(!t) return;
+    if(t.czasTrwania) en.runtime = Math.round(t.czasTrwania);
+    const alts = (t.seanse||[]).map(s=>{ const dt=apiDT(s.dataCzas); return dt?{date:dt.date,time:dt.time,venue:s.sala}:null; }).filter(Boolean);
+    if(alts.length) en.alts = alts;
+    if(!en.date && alts.length===1){ en.note = (en.note?en.note+" · ":"")+"znaleziono jedyny seans — wybierz go w edycji"; }
+  });
+  save();
+}
+
+/* ============ kolizje ============ */
+/* ============ kolizje (liczone osobno dla każdej osoby) ============ */
+function personsOverlap(a,b){ return a==="oboje" || b==="oboje" || a===b; }
+function overlaps(a,b){
+  if(a.date!==b.date) return false;
+  const s1=mins(a.time), s2=mins(b.time);
+  if(s1===null||s2===null) return false;
+  const first = s1<=s2 ? a : b, second = s1<=s2 ? b : a;
+  const need = (first.runtime||120) + (vgrp(first.venue)!==vgrp(second.venue) ? 30 : 15);
+  return Math.abs(s1-s2) < need;
+}
+function conflicts(){
+  const hard = entries.filter(e=>e.date&&e.time&&(e.status==="kupione"||e.status==="dokup"));
+  const map = {};
+  for(let i=0;i<hard.length;i++) for(let j=i+1;j<hard.length;j++){
+    const a=hard[i], b=hard[j];
+    if(personsOverlap(a.person,b.person) && overlaps(a,b)){
+      (map[a.id]=map[a.id]||[]).push(b.title + (b.person!=="oboje"?" ("+b.person+")":""));
+      (map[b.id]=map[b.id]||[]).push(a.title + (a.person!=="oboje"?" ("+a.person+")":""));
+    }
+  }
+  const soft = {};
+  entries.filter(e=>e.date&&e.time&&e.status==="opcja").forEach(o=>{
+    hard.forEach(h=>{ if(personsOverlap(o.person,h.person) && overlaps(o,h)) (soft[o.id]=soft[o.id]||[]).push(h.title); });
+  });
+  return {hard:map, soft};
+}
+function slotBusy(date, time, venue, person, exclId, runtime){
+  const probe = {date, time, venue, runtime: runtime||120};
+  const who = person || "oboje";
+  for(const h of entries){
+    if(h.id===exclId || !h.date || !h.time) continue;
+    if(h.status!=="kupione" && h.status!=="dokup") continue;
+    if(!personsOverlap(who, h.person)) continue;
+    if(overlaps(probe, h)) return h.title;
+  }
+  return null;
+}
+/* ============ dobieranie terminu ============ */
+function scoreSlot(o, person, exclId, runtime){
+  if(slotBusy(o.date, o.time, o.venue, person, exclId, runtime)) return null;
+  let s = 100;
+  const sameDay = entries.filter(e=> e.date===o.date && e.id!==exclId
+      && e.status!=="sprzedac" && e.status!=="opcja" && personsOverlap(e.person, person||"oboje")).length;
+  s -= sameDay * 12;                                  // rozkładaj po dniach zamiast upychać
+  const idx = FEST_DAYS.indexOf(o.date);
+  if(idx >= 0) s -= idx * 1.5;                        // wcześniej = zostaje zapas na później
+  const t = mins(o.time);
+  if(t !== null){ if(t < 600) s -= 6; if(t >= 1320) s -= 4; }   // skrajne godziny mniej wygodne
+  if(o.date < todayStr()) return null;                // termin już minął
+  return s;
+}
+function bestSlot(alts, person, exclId, runtime){
+  const scored = (alts||[]).map(o=>({o, s:scoreSlot(o, person, exclId, runtime)}))
+                           .filter(x=> x.s !== null)
+                           .sort((a,b)=> b.s - a.s);
+  return scored.length ? scored[0].o : null;
+}
+/* propozycje przesunięcia niekupionych seansów, które zderzają się z danym wpisem */
+function planMoves(target){
+  const moves = [];
+  entries.forEach(e=>{
+    if(e.id===target.id || !e.date || !e.time) return;
+    if(e.status==="kupione" || e.status==="sprzedac") return;
+    if(!personsOverlap(e.person, target.person)) return;
+    if(!overlaps(e, target)) return;
+    const alt = bestSlot((e.alts||[]).filter(o=> !(o.date===e.date && o.time===e.time)), e.person, e.id, e.runtime);
+    if(alt) moves.push({e, o:alt});
+  });
+  return moves;
+}
+function offerMoves(target){
+  const moves = planMoves(target);
+  if(!moves.length) return false;
+  const opis = moves.map(m=> `• ${m.e.title}: ${DOW[m.e.date]||""} ${fmtDay(m.e.date)} ${m.e.time} → ${DOW[m.o.date]||""} ${fmtDay(m.o.date)} ${m.o.time} (${m.o.venue||"?"})`).join("\n");
+  if(!confirm("to się zderza z tym, co już masz. mogę przestawić niekupione seanse:\n\n"+opis+"\n\nprzestawić?")) return false;
+  moves.forEach(m=>{ m.e.date=m.o.date; m.e.time=m.o.time; m.e.venue=m.o.venue||m.e.venue; touch(m.e); });
+  return true;
+}
+
+/* ============ synchronizacja dwóch urządzeń ============ */
+function saveSync(){ rawSet("nh26-sync", JSON.stringify({url:sync.url, room:sync.room})).catch(()=>{}); }
+function isBlob(u){ return /jsonblob\.com/i.test(u||""); }
+function syncEndpoint(){
+  const base = sync.url.replace(/\/+$/,"");
+  return isBlob(base) ? base + "/" + encodeURIComponent(sync.room)
+                      : base + "/?room=" + encodeURIComponent(sync.room);
+}
+/* pokój bez zakładania konta — darmowy magazyn JSON, kod pokoju = identyfikator zwrócony przez serwis */
+async function createRoom(){
+  const res = await fetch("https://jsonblob.com/api/jsonBlob", {
+    method:"POST", headers:{"content-type":"application/json"},
+    body: JSON.stringify({v:1, uid, entries, tomb})
+  });
+  if(!res.ok) throw new Error("http "+res.status);
+  const loc = res.headers.get("Location") || res.headers.get("location") || "";
+  const id = (loc.split("/").pop()||"").trim();
+  if(!id) throw new Error("serwis nie oddał adresu pokoju");
+  sync.url = "https://jsonblob.com/api/jsonBlob"; sync.room = id; sync.on = true; saveSync(); syncStamp();
+  return id;
+}
+function mergeState(remote){
+  if(!remote || !Array.isArray(remote.entries)) return false;
+  const before = JSON.stringify(entries);
+  Object.entries(remote.tomb||{}).forEach(([id,ts])=>{ tomb[id] = Math.max(tomb[id]||0, ts); });
+  const byId = {}; entries.forEach(e=> byId[e.id] = e);
+  remote.entries.forEach(r=>{
+    const l = byId[r.id];
+    if(!l || (r.m||0) > (l.m||0)) byId[r.id] = r;
+  });
+  entries = Object.values(byId).filter(e=> !(tomb[e.id] && tomb[e.id] > (e.m||0)));
+  uid = Math.max(uid, remote.uid||0);
+  return JSON.stringify(entries) !== before;
+}
+function syncStamp(){ const d=new Date(); sync.last = String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
+async function syncPull(quiet){
+  if(!sync.on || sync.busy) return;
+  sync.busy = true;
+  try{
+    const res = await fetch(syncEndpoint(), {cache:"no-store"});
+    if(!res.ok) throw new Error("http "+res.status);
+    const remote = await res.json();
+    const changed = mergeState(remote);
+    syncStamp();
+    if(changed){ rawSet("nh26-plan", JSON.stringify({v:1, uid, entries, tomb})).catch(()=>{}); render(); }
+    else if(!quiet) render();
+  }catch(e){ if(!quiet) alert("nie udało się połączyć z serwerem: "+e.message); }
+  finally{ sync.busy = false; }
+}
+async function syncPush(){
+  if(!sync.on) return;
+  try{
+    const res = await fetch(syncEndpoint(), {
+      method:"PUT", headers:{"content-type":"application/json"},
+      body: JSON.stringify({v:1, uid, entries, tomb})
+    });
+    if(res.ok){ syncStamp(); const d=$("#saveDot"); if(d) d.className="ok"; }
+  }catch(e){}
+}
+setInterval(()=>{ if(sync.on && tab!=="filmy") syncPull(true); }, 15000);
+
+/* ============ render ============ */
+function renderBanners(){
+  let h = "";
+  if(store==="none")
+    h += `<div class="banner warn">ta przeglądarka nie pozwala nic zapisać — zmiany znikną po zamknięciu karty. przed wyjściem skopiuj plan (zakładka filmy).</div>`;
+  else if(!storageOK)
+    h += `<div class="banner warn">ostatni zapis się nie udał — skopiuj plan w zakładce filmy, zanim zamkniesz.</div>`;
+  $("#banners").innerHTML = h;
+}
+function renderDays(){
+  const {hard} = conflicts();
+  const confDays = new Set(entries.filter(e=>hard[e.id]).map(e=>e.date));
+  const counts = {};
+  entries.forEach(e=>{ if(e.date&&e.status!=="sprzedac") counts[e.date]=(counts[e.date]||0)+1; });
+  const td = todayStr();
+  let h = `<div class="day ${selDay===null?"sel":""}" data-d=""><div class="dw">·</div><div class="dn">all</div><div class="ct">${entries.length}</div></div>`;
+  FEST_DAYS.forEach(d=>{
+    h += `<div class="day ${selDay===d?"sel":""} ${d===td?"today":""} ${confDays.has(d)?"warn":""}" data-d="${d}">
+      <div class="dw">${DOW[d]}</div><div class="dn">${d.slice(8,10)}</div><div class="ct">${counts[d]?counts[d]+" s.":"—"}</div></div>`;
+  });
+  $("#dayRail").innerHTML = h;
+  document.querySelectorAll(".day").forEach(el=>el.onclick=()=>{ selDay = el.dataset.d||null; render(); });
+}
+function statusChip(s){
+  const lab = {kupione:"kupione", dokup:"do kupienia", opcja:"opcja", sprzedac:"sprzedać"}[s]||s;
+  return `<span class="chip ${s}">${lab}</span>`;
+}
+function card(e, cf){
+  const hardC = cf.hard[e.id], softC = cf.soft[e.id];
+  const past = e.date && e.date < todayStr();
+  return `<div class="card s-${e.status} ${past?"past":""}" data-id="${e.id}">
+    <div class="t">${e.time||"—"}<small>${e.venue||""}</small></div>
+    <div class="b">
+      <div class="ti">${e.title}</div>
+      <div class="mi">${statusChip(e.status)}<span class="chip osoba">${e.person}</span>${e.runtime?`<span>${e.runtime} min</span>`:""}${e.note?`<span>${e.note}</span>`:""}</div>
+      ${hardC?`<div class="conf">⚠ kolizja: ${hardC.join(", ")}</div>`:""}
+      ${softC?`<div class="conf soft">nie zmieści się obok: ${softC.join(", ")}</div>`:""}
+    </div>
+  </div>`;
+}
+function renderPlan(){
+  const cf = conflicts();
+  const withDate = entries.filter(e=>e.date && (!selDay||e.date===selDay))
+    .sort((a,b)=> a.date===b.date ? (mins(a.time)||0)-(mins(b.time)||0) : a.date<b.date?-1:1);
+  const noDate = entries.filter(e=>!e.date);
+  let h = "";
+  let lastDay = null;
+  withDate.forEach(e=>{
+    if(e.date!==lastDay){ lastDay=e.date; h += `<div class="sec">${DOW[e.date]||""} ${fmtDay(e.date)}</div>`; }
+    h += card(e, cf);
+  });
+  if(!withDate.length) h += `<div class="empty">pusto w tym widoku</div>`;
+  if(noDate.length && !selDay){
+    h += `<div class="sec">bez terminu</div>`;
+    noDate.forEach(e=> h += card(e, cf));
+  }
+  return h;
+}
+function renderZakupy(){
+  const buy = entries.filter(e=>e.status==="dokup").sort((a,b)=> (a.date||"9")< (b.date||"9")?-1:1);
+  const sell = entries.filter(e=>e.status==="sprzedac");
+  let h = "";
+  if(buy.length){
+    h += `<div class="sec">do kupienia (${buy.length})</div>`;
+    buy.forEach(e=>{
+      h += `<div class="buyrow" data-id="${e.id}">
+        <div class="cb" data-act="buy">✓</div>
+        <div class="inf"><div class="ti">${e.title}</div>
+        <div class="mi">${e.date?DOW[e.date]+" "+fmtDay(e.date)+" "+(e.time||""):"termin nieustalony"} ${e.venue||""}</div></div>
+      </div>`;
+    });
+  } else h += `<div class="empty">nic do kupienia — wszystko odhaczone</div>`;
+  if(sell.length){
+    h += `<div class="sec">do sprzedania (${sell.length})</div>`;
+    sell.forEach(e=>{
+      h += `<div class="buyrow" data-id="${e.id}">
+        <div class="cb" data-act="sold" style="border-color:var(--sell)">✓</div>
+        <div class="inf"><div class="ti">${e.title}</div>
+        <div class="mi">${e.date?DOW[e.date]+" "+fmtDay(e.date)+" "+(e.time||""):""} — po sprzedaży odhacz, zniknie z planu</div></div>
+      </div>`;
+    });
+  }
+  return h;
+}
+function renderFilmy(){
+  let h = "";
+  if(program){
+    h += `<input class="search" id="pSearch" placeholder="szukaj w programie (${program.tytuly.length} tytułów)…">`;
+    h += `<div class="sec">program wczytany ${program.ts||""}</div>`;
+    h += `<div id="pResults">${progList("")}</div>`;
+  } else {
+    h += `<div class="banner">pełny program nie jest wczytany — apka działa na tym, co w niej wpisane. z pliku na dysku przeglądarka nie pozwoli nic pobrać. otwórz w drugiej karcie <b>nowehoryzonty.pl/open-api/program</b>, zaznacz całość i skopiuj, potem wklej niżej.</div>`;
+  }
+  h += `<div class="sec">program festiwalu</div>
+    <div class="banner">bez schowka: otwórz <b>nowehoryzonty.pl/open-api/program</b>, zapisz stronę jako plik (w chrome: ⋮ → ikona pobierania), a potem wskaż go poniżej.</div>
+    <label class="btn gho" style="display:block;text-align:center">wybierz plik z programem
+      <input type="file" id="progFile" accept=".json,application/json,text/plain" style="display:none"></label>
+    <textarea class="in" id="impProg" style="margin-top:8px" placeholder="albo wklej treść — przy dużym pliku schowek może jej nie unieść"></textarea>
+    <div class="btnrow" style="margin-top:8px"><button class="btn gho" id="impProgBtn">wczytaj z wklejonego</button></div>`;
+  h += `<div class="sec">plan — kopia i drugi telefon</div>
+    <div class="btnrow" style="margin-top:0">
+      <button class="btn gho" id="dlBtn">zapisz do pliku</button>
+      <button class="btn gho" id="expBtn">skopiuj plan</button>
+    </div>
+    <label class="btn gho" style="display:block;text-align:center;margin-top:8px">wczytaj plan z pliku
+      <input type="file" id="planFile" accept=".json,application/json,text/plain" style="display:none"></label>
+    <textarea class="in" id="impPlan" style="margin-top:8px" placeholder="albo wklej plan z drugiego telefonu"></textarea>
+    <div class="btnrow" style="margin-top:8px"><button class="btn gho" id="impPlanBtn">wczytaj z wklejonego</button></div>`;
+  h += `<div class="sec">synchronizacja z drugą osobą${sync.on?" — włączona"+(sync.last?", ostatnio "+sync.last:""):""}</div>
+    <input class="in" id="syncUrl" placeholder="adres backendu (https://…workers.dev)" value="${sync.url||""}">
+    <input class="in" id="syncRoom" style="margin-top:8px" placeholder="kod pokoju — ten sam u obu osób" value="${sync.room||""}">
+    <div class="btnrow" style="margin-top:8px">
+      <button class="btn gho" id="syncSave">${sync.on?"zapisz i odśwież":"połącz"}</button>
+      ${sync.on?`<button class="btn gho" id="syncOff">rozłącz</button>`:""}
+    </div>
+    ${sync.on?"":`<div class="btnrow" style="margin-top:8px"><button class="btn pri" id="syncNew">utwórz pokój (bez konta)</button></div>
+    <div class="banner" style="margin:8px 0 0">tworzy wspólny pokój na darmowym magazynie jsonblob.com — bez rejestracji. dostaniesz kod, który podajesz drugiej osobie. kto zna kod, ten widzi plan, więc nie wrzucaj go publicznie.</div>`}`;
+  h += `<div class="sec">diagnostyka</div>
+    <div class="btnrow" style="margin-top:0"><button class="btn gho" id="apiTest">sprawdź, czy API festiwalu odpowiada</button></div>`;
+  return h;
+}
+function progList(q){
+  const qq = nrm(q);
+  const have = new Set(entries.map(e=>nrm(e.mt||e.title)));
+  let list = (program.tytuly||[]).filter(t=>t.film!==false);
+  if(qq) list = list.filter(t=> nrm(t.tytulPl).includes(qq)||nrm(t.tytulOrg).includes(qq)||nrm(t.rezyser||"").includes(qq));
+  list = list.slice(0,40);
+  if(!list.length) return `<div class="empty">brak wyników</div>`;
+  return list.map(t=>{
+    const sek = (t.sekcje||[]).find(s=>s.glowna) || (t.sekcje||[])[0];
+    const kol = sek && secById[sek.id] ? secById[sek.id].kolor : "#555";
+    const cnt = (t.seanse||[]).length;
+    const inPlan = have.has(nrm(t.tytulPl));
+    return `<div class="prow" data-slug="${t.slug}">
+      <div class="ti">${t.tytulPl}${inPlan?' <span class="chip kupione">w planie</span>':""}</div>
+      <div class="mi"><span class="secdot" style="background:${kol}"></span>${t.glownaSekcja||""} · ${t.rezyser||""} ${t.czasTrwania?"· "+Math.round(t.czasTrwania)+" min":""} · ${cnt} seans${cnt===1?"":cnt<5?"e":"ów"}</div>
+    </div>`;
+  }).join("");
+}
+function render(){
+  renderDays(); renderBanners();
+  const m = $("#main");
+  if(tab==="plan") m.innerHTML = renderPlan();
+  else if(tab==="zakupy") m.innerHTML = renderZakupy();
+  else m.innerHTML = renderFilmy();
+  // handlers
+  m.querySelectorAll(".card").forEach(el=>el.onclick=()=>openEdit(el.dataset.id));
+  m.querySelectorAll(".buyrow .cb").forEach(el=>el.onclick=(ev)=>{
+    ev.stopPropagation();
+    const id = el.closest(".buyrow").dataset.id;
+    const e = entries.find(x=>x.id===id);
+    if(el.dataset.act==="buy"){ e.status="kupione"; touch(e); }
+    else { tomb[id] = now(); entries = entries.filter(x=>x.id!==id); }
+    save(); render();
+  });
+  m.querySelectorAll(".buyrow .inf").forEach(el=>el.onclick=()=>openEdit(el.closest(".buyrow").dataset.id));
+  const ps = $("#pSearch");
+  if(ps) ps.oninput = ()=>{ $("#pResults").innerHTML = progList(ps.value); bindProg(); };
+  const ipb = $("#impProgBtn");
+  if(ipb) ipb.onclick = ()=>{
+    const t = ($("#impProg").value||"").trim();
+    if(!t){ alert("najpierw wklej treść ze strony"); return; }
+    try{
+      const d = JSON.parse(t);
+      if(!d.tytuly) throw new Error("to nie wygląda na program z open-api");
+      setProgram(d); render();
+    }catch(e){ alert("nie udało się odczytać: "+e.message); }
+  };
+  const pf = $("#progFile");
+  if(pf) readFile(pf, d=>{
+    if(!d.tytuly){ alert("ten plik to nie program z open-api"); return; }
+    setProgram(d); render();
+  });
+  const plf = $("#planFile");
+  if(plf) readFile(plf, d=>{
+    if(!Array.isArray(d.entries)){ alert("ten plik to nie plan"); return; }
+    entries = d.entries; uid = d.uid||900; applyPatch(); save(); render();
+  });
+  const ss = $("#syncSave");
+  if(ss) ss.onclick = async ()=>{
+    const u = ($("#syncUrl").value||"").trim(), r = ($("#syncRoom").value||"").trim();
+    if(!u || !r){ alert("podaj adres backendu i kod pokoju"); return; }
+    sync.url = u; sync.room = r; sync.on = true; saveSync();
+    try{
+      const res = await fetch(syncEndpoint(), {cache:"no-store"});
+      if(!res.ok) throw new Error("http "+res.status);
+      const remote = await res.json();
+      if(Array.isArray(remote.entries) && remote.entries.length
+         && confirm("w tym pokoju jest już plan ("+remote.entries.length+" pozycji). wczytać go zamiast twojego?")){
+        entries = remote.entries; tomb = remote.tomb||{}; uid = Math.max(uid, remote.uid||0); applyPatch();
+      }
+      syncStamp(); save(); render();
+      alert("połączono. druga osoba wpisuje ten sam adres i kod.");
+    }catch(e){
+      sync.on = false; saveSync(); render();
+      alert("nie udało się połączyć: "+e.message);
+    }
+  };
+  const sn = $("#syncNew");
+  if(sn) sn.onclick = async ()=>{
+    sn.textContent = "tworzę…";
+    try{
+      const id = await createRoom();
+      render();
+      alert("pokój gotowy.\n\nkod: "+id+"\n\ndruga osoba wpisuje adres https://jsonblob.com/api/jsonBlob i ten kod, a potem zgadza się na wczytanie planu z pokoju.");
+    }catch(e){
+      sn.textContent = "utwórz pokój (bez konta)";
+      alert("nie udało się utworzyć pokoju: "+e.message+"\n\njeśli apka jest otwarta z pliku na dysku, spróbuj po wystawieniu jej na stronę albo postaw własny backend.");
+    }
+  };
+  const so = $("#syncOff");
+  if(so) so.onclick = ()=>{ sync.on = false; sync.url=""; sync.room=""; saveSync(); render(); };
+  const at = $("#apiTest");
+  if(at) at.onclick = async ()=>{
+    at.textContent = "sprawdzam…";
+    try{
+      const r = await fetch("https://www.nowehoryzonty.pl/open-api/program", {cache:"no-store"});
+      const d = await r.json();
+      alert("API odpowiada — tytułów: "+(d.tytuly||[]).length+". program można pobierać automatycznie.");
+    }catch(e){
+      alert("przeglądarka nie puściła zapytania ("+e.message+"). z pliku na dysku to normalne; na własnej domenie sprawdź ponownie, a jak dalej blokuje — potrzebny snapshot albo proxy.");
+    }
+    at.textContent = "sprawdź, czy API festiwalu odpowiada";
+  };
+  const db = $("#dlBtn");
+  if(db) db.onclick = ()=>{
+    try{
+      const blob = new Blob([JSON.stringify({v:1, uid, entries, tomb})], {type:"application/json"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = "nh26-plan.json";
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    }catch(e){ alert("zapis do pliku się nie udał — użyj przycisku kopiowania"); }
+  };
+  const eb = $("#expBtn");
+  if(eb) eb.onclick = ()=>{
+    const t = JSON.stringify({v:1, uid, entries});
+    const box = $("#impPlan"); box.value = t; box.select();
+    try{ navigator.clipboard.writeText(t); }catch(e){}
+    alert("plan jest w polu niżej — skopiuj go i wyślij, albo zachowaj jako kopię.");
+  };
+  const ipl = $("#impPlanBtn");
+  if(ipl) ipl.onclick = ()=>{
+    try{
+      const d = JSON.parse(($("#impPlan").value||"").trim());
+      if(!Array.isArray(d.entries)) throw new Error("brak listy filmów");
+      entries = d.entries; uid = d.uid||900; applyPatch(); save(); render();
+    }catch(e){ alert("nie udało się wczytać: "+e.message); }
+  };
+  bindProg();
+}
+function bindProg(){
+  document.querySelectorAll(".prow").forEach(el=>el.onclick=()=>openFromProgram(el.dataset.slug));
+}
+function readFile(input, cb){
+  input.onchange = ()=>{
+    const f = input.files && input.files[0];
+    if(!f) return;
+    const fr = new FileReader();
+    fr.onload = ()=>{
+      try{ cb(JSON.parse(String(fr.result).trim())); }
+      catch(e){ alert("nie udało się odczytać pliku: "+e.message); }
+    };
+    fr.onerror = ()=> alert("nie udało się otworzyć pliku");
+    fr.readAsText(f);
+  };
+}
+
+/* ============ sheet: edycja wpisu ============ */
+let sheetState = null;
+function openSheet(html){ $("#sheet").innerHTML=html; $("#sheet").style.display="block"; $("#ov").style.display="block"; }
+function closeSheet(){ $("#sheet").style.display="none"; $("#ov").style.display="none"; sheetState=null; }
+$("#ov").onclick = closeSheet;
+
+function seansOptions(e, cur){
+  const opts = [];
+  if(e.date) opts.push({date:e.date,time:e.time,venue:e.venue});
+  (e.alts||[]).forEach(a=>{ if(!opts.some(o=>o.date===a.date&&o.time===a.time)) opts.push(a); });
+  return opts.map(o=>{
+    const busy = slotBusy(o.date, o.time, o.venue, e.person, e.id, e.runtime);
+    const isCur = cur && cur.date===o.date && cur.time===o.time;
+    const busyNote = busy && !(isCur) ? `<span class="tag busy">kolizja: ${busy}</span>` : `<span class="tag free">${isCur?"wybrany":"wolne"}</span>`;
+    return `<button class="sopt ${isCur?"sel":""}" data-d="${o.date}" data-t="${o.time}" data-v="${o.venue||""}">${DOW[o.date]||""} ${fmtDay(o.date)} ${o.time} · ${o.venue||"?"} ${busyNote}</button>`;
+  }).join("");
+}
+function openEdit(id){
+  const e = entries.find(x=>x.id===id); if(!e) return;
+  sheetState = {mode:"edit", id, date:e.date, time:e.time, venue:e.venue};
+  openSheet(`
+    <h2>${e.title}</h2>
+    <div class="sub">${e.runtime? e.runtime+" min · ":""}dotknij, żeby zmienić</div>
+    <div class="fl">status</div>
+    <div class="segs" id="stSegs">
+      ${["kupione","dokup","opcja","sprzedac"].map(s=>`<button class="seg ${e.status===s?"sel":""}" data-s="${s}">${{kupione:"kupione",dokup:"do kupienia",opcja:"opcja",sprzedac:"sprzedać"}[s]}</button>`).join("")}
+    </div>
+    <div class="fl">kto idzie</div>
+    <div class="segs" id="pSegs">
+      ${["oboje","jacek","magda"].map(p=>`<button class="seg ${e.person===p?"sel":""}" data-p="${p}">${p}</button>`).join("")}
+    </div>
+    <div class="fl">seans</div>
+    <div class="slist" id="sList">${seansOptions(e,{date:e.date,time:e.time}) || ""}</div>
+    ${(e.alts&&e.alts.length>1)?`<div class="btnrow" style="margin-top:0"><button class="btn gho" id="eAuto">dobierz termin sam</button></div>`:""}
+    <div class="inrow" style="margin-top:6px">
+      <input class="in" id="eDate" type="date" value="${e.date||""}" min="2026-07-23" max="2026-08-02">
+      <input class="in" id="eTime" type="time" value="${e.time||""}">
+    </div>
+    <input class="in" id="eVenue" style="margin-top:8px" placeholder="sala (np. KNH 3, DCF Lwów)" value="${e.venue||""}">
+    <div class="fl">notatka</div>
+    <textarea class="in" id="eNote">${e.note||""}</textarea>
+    <div class="btnrow">
+      <button class="btn del" id="eDel">usuń</button>
+      <button class="btn gho" id="eCancel">anuluj</button>
+      <button class="btn pri" id="eSave">zapisz</button>
+    </div>
+  `);
+  $("#stSegs").querySelectorAll(".seg").forEach(b=>b.onclick=()=>{ $("#stSegs .sel")?.classList.remove("sel"); b.classList.add("sel"); });
+  $("#pSegs").querySelectorAll(".seg").forEach(b=>b.onclick=()=>{ $("#pSegs .sel")?.classList.remove("sel"); b.classList.add("sel"); });
+  $("#sList").querySelectorAll(".sopt").forEach(b=>b.onclick=()=>{
+    $("#eDate").value=b.dataset.d; $("#eTime").value=b.dataset.t; $("#eVenue").value=b.dataset.v;
+    $("#sList .sel")?.classList.remove("sel"); b.classList.add("sel");
+  });
+  const eAuto = $("#eAuto");
+  if(eAuto) eAuto.onclick = ()=>{
+    const who = $("#pSegs .sel")?.dataset.p || e.person;
+    const o = bestSlot(e.alts, who, e.id, e.runtime);
+    if(!o){ alert("żaden z pozostałych seansów tego filmu nie mieści się bez kolizji"); return; }
+    $("#eDate").value=o.date; $("#eTime").value=o.time; $("#eVenue").value=o.venue||"";
+    $("#sList .sel")?.classList.remove("sel");
+    alert("proponuję "+(DOW[o.date]||"")+" "+fmtDay(o.date)+" "+o.time+" · "+(o.venue||"?")+". zapisz, jeśli pasuje.");
+  };
+  $("#eCancel").onclick = closeSheet;
+  $("#eDel").onclick = ()=>{ if(confirm("usunąć "+e.title+" z planu?")){ tomb[id] = now(); entries = entries.filter(x=>x.id!==id); save(); closeSheet(); render(); } };
+  $("#eSave").onclick = ()=>{
+    e.status = $("#stSegs .sel")?.dataset.s || e.status;
+    e.person = $("#pSegs .sel")?.dataset.p || e.person;
+    e.date = $("#eDate").value || null; e.time = $("#eTime").value || null;
+    e.venue = $("#eVenue").value || null; e.note = $("#eNote").value.trim();
+    touch(e);
+    if(e.date && e.time && e.status!=="sprzedac" && e.status!=="opcja") offerMoves(e);
+    save(); closeSheet(); render();
+  };
+}
+
+/* ============ sheet: dodawanie (ręczne / z programu) ============ */
+function openAdd(pre){
+  pre = pre || {};
+  openSheet(`
+    <h2>${pre.title ? pre.title : "dodaj film"}</h2>
+    <div class="sub">${pre.title ? (pre.info||"") : "wpisz z programu papierowego albo strony nh"}</div>
+    ${pre.title ? "" : `<input class="in" id="aTitle" placeholder="tytuł" style="margin-bottom:8px">`}
+    <div class="fl">status</div>
+    <div class="segs" id="aSt">
+      <button class="seg sel" data-s="dokup">do kupienia</button>
+      <button class="seg" data-s="kupione">kupione</button>
+      <button class="seg" data-s="opcja">opcja</button>
+    </div>
+    <div class="fl">kto idzie</div>
+    <div class="segs" id="aP">
+      <button class="seg sel" data-p="oboje">oboje</button>
+      <button class="seg" data-p="jacek">jacek</button>
+      <button class="seg" data-p="magda">magda</button>
+    </div>
+    <div class="fl">seans</div>
+    ${pre.seanse && pre.seanse.length ? `<div class="slist" id="aList">${pre.seanse.map(o=>{
+        const busy = slotBusy(o.date, o.time, o.venue, "oboje", null, pre.runtime);
+        return `<button class="sopt" data-d="${o.date}" data-t="${o.time}" data-v="${o.venue||""}">${DOW[o.date]||""} ${fmtDay(o.date)} ${o.time} · ${o.venue||"?"} ${busy?`<span class="tag busy">kolizja: ${busy}</span>`:`<span class="tag free">wolne</span>`}</button>`;
+      }).join("")}</div>
+      <div class="btnrow" style="margin-top:0"><button class="btn gho" id="aAuto">dobierz termin sam</button></div>` : ""}
+    <div class="inrow" style="margin-top:6px">
+      <input class="in" id="aDate" type="date" min="2026-07-23" max="2026-08-02">
+      <input class="in" id="aTime" type="time">
+    </div>
+    <input class="in" id="aVenue" style="margin-top:8px" placeholder="sala (np. KNH 3, DCF Lwów)">
+    <div class="btnrow">
+      <button class="btn gho" id="aCancel">anuluj</button>
+      <button class="btn pri" id="aSave">dodaj</button>
+    </div>
+  `);
+  $("#aSt").querySelectorAll(".seg").forEach(b=>b.onclick=()=>{ $("#aSt .sel")?.classList.remove("sel"); b.classList.add("sel"); });
+  $("#aP").querySelectorAll(".seg").forEach(b=>b.onclick=()=>{ $("#aP .sel")?.classList.remove("sel"); b.classList.add("sel"); });
+  const al = $("#aList");
+  if(al) al.querySelectorAll(".sopt").forEach(b=>b.onclick=()=>{
+    $("#aDate").value=b.dataset.d; $("#aTime").value=b.dataset.t; $("#aVenue").value=b.dataset.v;
+    al.querySelector(".sel")?.classList.remove("sel"); b.classList.add("sel");
+  });
+  const aAuto = $("#aAuto");
+  if(aAuto) aAuto.onclick = ()=>{
+    const who = $("#aP .sel")?.dataset.p || "oboje";
+    const o = bestSlot(pre.seanse, who, null, pre.runtime);
+    if(!o){ alert("żaden seans tego filmu nie mieści się bez kolizji — trzeba coś przestawić albo odpuścić"); return; }
+    $("#aDate").value=o.date; $("#aTime").value=o.time; $("#aVenue").value=o.venue||"";
+    if(al) al.querySelectorAll(".sopt").forEach(b=>{
+      b.classList.toggle("sel", b.dataset.d===o.date && b.dataset.t===o.time);
+    });
+  };
+  $("#aCancel").onclick = closeSheet;
+  $("#aSave").onclick = ()=>{
+    const title = pre.title || ($("#aTitle") ? $("#aTitle").value.trim() : "");
+    if(!title){ alert("podaj tytuł"); return; }
+    const who = $("#aP .sel").dataset.p;
+    // ten sam film może już siedzieć w planie u drugiej osoby — dołącz zamiast dublować
+    const dup = entries.find(x=> nrm(x.mt||x.title) === nrm(pre.mt||title));
+    if(dup){
+      if(dup.person !== who && dup.person !== "oboje" && who !== "oboje"){
+        if(confirm(dup.title+" ma już w planie "+dup.person+" ("+(dup.date?DOW[dup.date]+" "+fmtDay(dup.date)+" "+dup.time:"bez terminu")+"). ustawić na oboje zamiast dodawać drugi raz?")){
+          dup.person = "oboje"; touch(dup); save(); closeSheet(); render(); return;
+        }
+      } else if(!confirm(dup.title+" już jest w planie. dodać mimo to drugi raz?")){
+        openEdit(dup.id); return;
+      }
+    }
+    const en = E(title, $("#aSt .sel").dataset.s, $("#aDate").value||null, $("#aTime").value||null, $("#aVenue").value||null);
+    en.id = newId(); touch(en);
+    en.person = who;
+    if(pre.runtime) en.runtime = pre.runtime;
+    if(pre.seanse) en.alts = pre.seanse;
+    if(pre.mt) en.mt = pre.mt;
+    entries.push(en);
+    if(en.date && en.time && en.status!=="opcja") offerMoves(en);
+    save(); closeSheet(); render();
+  };
+}
+function openFromProgram(slug){
+  const t = (program.tytuly||[]).find(x=>x.slug===slug); if(!t) return;
+  const seanse = (t.seanse||[]).map(s=>{ const dt=apiDT(s.dataCzas); return dt?{date:dt.date,time:dt.time,venue:s.sala}:null; }).filter(Boolean);
+  openAdd({title:t.tytulPl, mt:t.tytulPl, runtime:t.czasTrwania?Math.round(t.czasTrwania):null,
+           seanse, info:`${t.rezyser||""} ${t.rok?"· "+t.rok:""} ${t.czasTrwania?"· "+Math.round(t.czasTrwania)+" min":""}`});
+}
+
+/* ============ start ============ */
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
+  tab = b.dataset.tab;
+  document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("sel",x===b));
+  render();
+});
+$("#fab").onclick = ()=>openAdd();
+$("#syncBtn").onclick = ()=>syncProgram(false);
+(async ()=>{
+  detectStore();
+  storageOK = store !== "none";
+  try{ devId = localStorage.getItem("nh26-dev") || ""; }catch(e){}
+  if(!devId){ devId = Math.random().toString(36).slice(2,6); try{ localStorage.setItem("nh26-dev", devId); }catch(e){} }
+  await load();
+  applyPatch();
+  render();
+  if(sync.on) syncPull(true);
+  syncProgram(true); // cicha próba na starcie
+})();
+</script>
+</body>
+</html>
