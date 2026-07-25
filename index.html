@@ -116,6 +116,18 @@ main{padding:0 14px 110px}
 .opisWrap summary::before{content:"opis ▾ ";color:var(--faint)}
 .opisWrap[open] summary::before{content:"opis ▴ "}
 .opisTxt{font-size:12.5px;line-height:1.5;color:var(--dim);padding:0 0 10px}
+.devbox{margin-top:20px;border-top:1px solid var(--line);padding-top:6px}
+.devbox summary{font-size:12px;color:var(--faint);font-weight:700;padding:10px 0;cursor:pointer;list-style:none;letter-spacing:.5px}
+.devbox summary::-webkit-details-marker{display:none}
+.devbox summary::before{content:"⚙ ";}
+.devbox[open] summary{color:var(--dim)}
+.devinner{opacity:.92}
+#aSug{margin-top:6px}
+.sugItem{display:block;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:9px 11px;margin-bottom:5px;font-family:inherit;font-size:13.5px;font-weight:600}
+.sugItem .sugMeta{display:block;font-size:11px;font-weight:400;color:var(--faint);margin-top:2px}
+.sugItem:active{border-color:var(--acc)}
+.sugNone{font-size:11.5px;color:var(--faint);padding:6px 2px}
+.linklike{background:none;border:none;color:var(--acc);font-family:inherit;font-size:11.5px;text-decoration:underline;padding:0;cursor:pointer}
 .secdot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:baseline}
 /* ---------- tabs ---------- */
 nav{
@@ -174,7 +186,7 @@ textarea.in{resize:vertical;min-height:54px;font-size:13.5px}
 <body>
 <header>
   <div class="brand">
-    <h1>nh26 <em>·</em> planer <span style="font-size:11px;color:var(--faint);font-weight:600">v11</span></h1>
+    <h1>nh26 <em>·</em> planer <span style="font-size:11px;color:var(--faint);font-weight:600">v13</span></h1>
     <div class="syncwrap"><span id="saveDot" title="zapis"></span><button id="syncBtn">⟳ program</button></div>
   </div>
   <div class="days" id="dayRail"></div>
@@ -357,19 +369,43 @@ async function load(){
     if(p) setProgram(JSON.parse(p), true);
   }catch(e){}
 }
-let saveT = null;
+let saveT = null, pushT = null;
+function saveLocal(){
+  try{
+    localStorage.setItem("nh26-plan", JSON.stringify({v:1, uid, entries, tomb}));
+    storageOK = true; const d=$("#saveDot"); if(d) d.className = "ok";
+    return true;
+  }catch(e){ return false; }
+}
 function save(){
+  // 1) zapis lokalny NATYCHMIAST — synchronicznie, przetrwa nawet zamknięcie karty tuż po zmianie
+  let ok = false;
+  if(store==="local" || store==="none"){ ok = saveLocal(); }
+  // 2) magazyn Claude (asynchroniczny) — tylko gdy taki jest
   clearTimeout(saveT);
   saveT = setTimeout(async ()=>{
-    try{
-      await rawSet("nh26-plan", JSON.stringify({v:1, uid, entries, tomb}));
-      storageOK = true; const d=$("#saveDot"); if(d) d.className = "ok";
-    }catch(e){
-      storageOK = false; const d=$("#saveDot"); if(d) d.className = "err"; renderBanners();
+    if(store==="claude"){
+      try{ await rawSet("nh26-plan", JSON.stringify({v:1, uid, entries, tomb})); ok = true; }catch(e){}
     }
-    if(sync.on) syncPush();
-  }, 350);
+    if(!ok && !saveLocal()){ storageOK = false; const d=$("#saveDot"); if(d) d.className = "err"; renderBanners(); }
+  }, 50);
+  // 3) wypchnięcie na serwer — z małym opóźnieniem, żeby zgrupować szybkie zmiany
+  if(sync.on){ clearTimeout(pushT); pushT = setTimeout(()=>syncPush(), 400); }
 }
+// bezpiecznik: przy zamknięciu/ukryciu karty dopchnij lokalny zapis i spróbuj wypchnąć
+function flushOnExit(){
+  saveLocal();
+  if(sync.on){
+    try{
+      const body = JSON.stringify({v:1, uid, entries, tomb});
+      if(navigator.sendBeacon){
+        navigator.sendBeacon(syncEndpoint(), new Blob([body], {type:"application/json"}));
+      }
+    }catch(e){}
+  }
+}
+window.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") flushOnExit(); });
+window.addEventListener("pagehide", flushOnExit);
 
 /* ============ program NH (open api / wklejony json) ============ */
 function pickDesc(t){
@@ -679,28 +715,14 @@ function renderZakupy(){
 }
 function renderFilmy(){
   let h = "";
+  // --- CODZIENNE: wyszukiwarka programu ---
   if(program){
     h += `<input class="search" id="pSearch" placeholder="szukaj w programie (${program.tytuly.length} tytułów)…">`;
-    h += `<div class="sec">program wczytany ${program.ts||""}</div>`;
     h += `<div id="pResults">${progList("")}</div>`;
   } else {
-    h += `<div class="banner">pełny program nie jest wczytany — apka działa na tym, co w niej wpisane. z pliku na dysku przeglądarka nie pozwoli nic pobrać. otwórz w drugiej karcie <b>nowehoryzonty.pl/open-api/program</b>, zaznacz całość i skopiuj, potem wklej niżej.</div>`;
+    h += `<div class="banner">program nie jest wczytany. jeśli apka jest na stronie, powinien dociągnąć się sam — odśwież za chwilę. jeśli nie, wczytaj go ręcznie w „narzędziach" niżej.</div>`;
   }
-  h += `<div class="sec">program festiwalu</div>
-    <div class="banner">bez schowka: otwórz <b>nowehoryzonty.pl/open-api/program</b>, zapisz stronę jako plik (w chrome: ⋮ → ikona pobierania), a potem wskaż go poniżej.</div>
-    <label class="btn gho" style="display:block;text-align:center">wybierz plik z programem
-      <input type="file" id="progFile" accept=".json,application/json,text/plain" style="display:none"></label>
-    <textarea class="in" id="impProg" style="margin-top:8px" placeholder="albo wklej treść — przy dużym pliku schowek może jej nie unieść"></textarea>
-    <div class="btnrow" style="margin-top:8px"><button class="btn gho" id="impProgBtn">wczytaj z wklejonego</button></div>`;
-  h += `<div class="sec">plan — kopia i drugi telefon</div>
-    <div class="btnrow" style="margin-top:0">
-      <button class="btn gho" id="dlBtn">zapisz do pliku</button>
-      <button class="btn gho" id="expBtn">skopiuj plan</button>
-    </div>
-    <label class="btn gho" style="display:block;text-align:center;margin-top:8px">wczytaj plan z pliku
-      <input type="file" id="planFile" accept=".json,application/json,text/plain" style="display:none"></label>
-    <textarea class="in" id="impPlan" style="margin-top:8px" placeholder="albo wklej plan z drugiego telefonu"></textarea>
-    <div class="btnrow" style="margin-top:8px"><button class="btn gho" id="impPlanBtn">wczytaj z wklejonego</button></div>`;
+  // --- CODZIENNE: synchronizacja ---
   if(sync.on){
     h += `<div class="sec">synchronizacja — włączona${sync.last?", ostatnio "+sync.last:""}</div>
       <div class="banner">pokój: <b>${sync.room}</b><br>druga osoba wpisuje ten sam adres i ten sam kod. kto zna kod, widzi plan — nie wrzucaj go publicznie.</div>
@@ -710,14 +732,41 @@ function renderFilmy(){
       </div>`;
   } else {
     h += `<div class="sec">synchronizacja z drugą osobą</div>
-      <div class="banner">wpisz adres swojego backendu (raz — zapamięta się) i wymyślony kod pokoju. druga osoba wpisuje to samo i macie wspólny plan. zmiany lecą w obie strony.</div>
+      <div class="banner">wpisz adres backendu (raz — zapamięta się) i wymyślony kod pokoju. druga osoba wpisuje to samo i macie wspólny plan.</div>
       <input class="in" id="syncUrl" placeholder="adres backendu (https://…workers.dev)" value="${sync.url||lastUrl()}">
       <input class="in" id="syncRoom" style="margin-top:8px" placeholder="kod pokoju — dowolny, byle ten sam u obu osób">
-      <div class="btnrow" style="margin-top:8px"><button class="btn pri" id="syncJoin">połącz</button></div>
-      <div class="banner" style="margin-top:10px">nie masz backendu? na jsonblob bez konta kliknij tu — dostaniesz gotowy kod, ale ten darmowy serwis bywa zawodny (limit zapytań).<br><button class="btn gho" id="syncNew" style="margin-top:8px">utwórz pokój na jsonblob (bez konta)</button></div>`;
-  };
-  h += `<div class="sec">diagnostyka</div>
-    <div class="btnrow" style="margin-top:0"><button class="btn gho" id="apiTest">sprawdź, czy API festiwalu odpowiada</button></div>`;
+      <div class="btnrow" style="margin-top:8px"><button class="btn pri" id="syncJoin">połącz</button></div>`;
+  }
+  // --- NARZĘDZIA: schowane pod rozwijanym menu ---
+  h += `<details class="devbox">
+    <summary>narzędzia (dla zaawansowanych)</summary>
+    <div class="devinner">
+
+    <div class="sec">kopia planu</div>
+    <div class="btnrow" style="margin-top:0">
+      <button class="btn gho" id="dlBtn">zapisz do pliku</button>
+      <button class="btn gho" id="expBtn">skopiuj plan</button>
+    </div>
+    <label class="btn gho" style="display:block;text-align:center;margin-top:8px">wczytaj plan z pliku
+      <input type="file" id="planFile" accept=".json,application/json,text/plain" style="display:none"></label>
+    <textarea class="in" id="impPlan" style="margin-top:8px" placeholder="albo wklej plan z drugiego telefonu"></textarea>
+    <div class="btnrow" style="margin-top:8px"><button class="btn gho" id="impPlanBtn">wczytaj z wklejonego</button></div>
+
+    <div class="sec">program festiwalu ${program?"— wczytany "+(program.ts||""):"— niewczytany"}</div>
+    <label class="btn gho" style="display:block;text-align:center">wczytaj program z pliku
+      <input type="file" id="progFile" accept=".json,application/json,text/plain" style="display:none"></label>
+    <textarea class="in" id="impProg" style="margin-top:8px" placeholder="albo wklej treść z open-api/program"></textarea>
+    <div class="btnrow" style="margin-top:8px"><button class="btn gho" id="impProgBtn">wczytaj z wklejonego</button></div>
+
+    <div class="sec">synchronizacja — awaryjnie</div>
+    <div class="banner">bez własnego backendu: darmowy pokój na jsonblob (bez konta). serwis bywa zawodny — limit zapytań.</div>
+    <div class="btnrow" style="margin-top:8px"><button class="btn gho" id="syncNew">utwórz pokój na jsonblob</button></div>
+
+    <div class="sec">diagnostyka</div>
+    <div class="btnrow" style="margin-top:0"><button class="btn gho" id="apiTest">sprawdź, czy API festiwalu odpowiada</button></div>
+
+    </div>
+  </details>`;
   return h;
 }
 function progList(q){
@@ -965,10 +1014,18 @@ function openEdit(id){
 /* ============ sheet: dodawanie (ręczne / z programu) ============ */
 function openAdd(pre){
   pre = pre || {};
+  // stan lokalny okna: jaki film jest aktualnie "przypięty" (z programu) albo null = custom
+  let picked = pre.slug ? pre : null;
+
   openSheet(`
-    <h2>${pre.title ? pre.title : "dodaj film"}</h2>
-    <div class="sub">${pre.title ? (pre.info||"") : "wpisz z programu papierowego albo strony nh"}</div>
-    ${pre.title ? "" : `<input class="in" id="aTitle" placeholder="tytuł" style="margin-bottom:8px">`}
+    <h2 id="aHead">${pre.title ? pre.title : "dodaj film"}</h2>
+    <div class="sub" id="aSub">${pre.title ? (pre.info||"") : "wpisz tytuł — podpowiem z programu, albo dodasz własny"}</div>
+
+    <div class="fl">tytuł</div>
+    <input class="in" id="aTitle" placeholder="zacznij pisać tytuł…" autocomplete="off" value="${pre.title||""}">
+    <div id="aSug"></div>
+    <div id="aPickedInfo" style="display:${picked?"block":"none"};font-size:11.5px;color:var(--ok);margin-top:6px">✓ dane wczytane z programu — <button class="linklike" id="aUnpick">to jednak inny film</button></div>
+
     <div class="fl">status</div>
     <div class="segs" id="aSt">
       <button class="seg sel" data-s="dokup">do kupienia</button>
@@ -981,46 +1038,108 @@ function openAdd(pre){
       <button class="seg" data-p="jacek">jacek</button>
       <button class="seg" data-p="magda">magda</button>
     </div>
+
     <div class="fl">seans</div>
-    ${pre.seanse && pre.seanse.length ? `<div class="slist" id="aList">${pre.seanse.map(o=>{
-        const busy = slotBusy(o.date, o.time, o.venue, "oboje", null, pre.runtime);
-        return `<button class="sopt" data-d="${o.date}" data-t="${o.time}" data-v="${o.venue||""}">${DOW[o.date]||""} ${fmtDay(o.date)} ${o.time} · ${o.venue||"?"} ${busy?`<span class="tag busy">kolizja: ${busy}</span>`:`<span class="tag free">wolne</span>`}</button>`;
-      }).join("")}</div>
-      <div class="btnrow" style="margin-top:0"><button class="btn gho" id="aAuto">dobierz termin sam</button></div>` : ""}
+    <div id="aSeansWrap"></div>
     <div class="inrow" style="margin-top:6px">
-      <input class="in" id="aDate" type="date" min="2026-07-23" max="2026-08-02">
-      <input class="in" id="aTime" type="time">
+      <input class="in" id="aDate" type="date" min="2026-07-23" max="2026-08-02" value="${pre.date||""}">
+      <input class="in" id="aTime" type="time" value="${pre.time||""}">
     </div>
-    <input class="in" id="aVenue" style="margin-top:8px" placeholder="sala (np. KNH 3, DCF Lwów)">
+    <input class="in" id="aVenue" style="margin-top:8px" placeholder="sala (np. KNH 3, DCF Lwów)" value="${pre.venue||""}">
+
     <div class="btnrow">
       <button class="btn gho" id="aCancel">anuluj</button>
       <button class="btn pri" id="aSave">dodaj</button>
     </div>
   `);
-  $("#aSt").querySelectorAll(".seg").forEach(b=>b.onclick=()=>{ $("#aSt .sel")?.classList.remove("sel"); b.classList.add("sel"); });
-  $("#aP").querySelectorAll(".seg").forEach(b=>b.onclick=()=>{ $("#aP .sel")?.classList.remove("sel"); b.classList.add("sel"); });
-  const al = $("#aList");
-  if(al) al.querySelectorAll(".sopt").forEach(b=>b.onclick=()=>{
-    $("#aDate").value=b.dataset.d; $("#aTime").value=b.dataset.t; $("#aVenue").value=b.dataset.v;
-    al.querySelector(".sel")?.classList.remove("sel"); b.classList.add("sel");
-  });
-  const aAuto = $("#aAuto");
-  if(aAuto) aAuto.onclick = ()=>{
+
+  // --- renderowanie listy seansów dla przypiętego filmu ---
+  function renderSeanse(){
+    const wrap = $("#aSeansWrap");
+    const seanse = picked && picked.seanse ? picked.seanse : [];
+    if(!seanse.length){ wrap.innerHTML = ""; return; }
     const who = $("#aP .sel")?.dataset.p || "oboje";
-    const o = bestSlot(pre.seanse, who, null, pre.runtime);
-    if(!o){ alert("żaden seans tego filmu nie mieści się bez kolizji — trzeba coś przestawić albo odpuścić"); return; }
-    $("#aDate").value=o.date; $("#aTime").value=o.time; $("#aVenue").value=o.venue||"";
-    if(al) al.querySelectorAll(".sopt").forEach(b=>{
-      b.classList.toggle("sel", b.dataset.d===o.date && b.dataset.t===o.time);
+    wrap.innerHTML = `<div class="slist" id="aList">${seanse.map(o=>{
+        const busy = slotBusy(o.date, o.time, o.venue, who, null, picked.runtime);
+        return `<button class="sopt" data-d="${o.date}" data-t="${o.time}" data-v="${o.venue||""}">${DOW[o.date]||""} ${fmtDay(o.date)} ${o.time} · ${o.venue||"?"} ${busy?`<span class="tag busy">kolizja: ${busy}</span>`:`<span class="tag free">wolne</span>`}</button>`;
+      }).join("")}</div>
+      <div class="btnrow" style="margin-top:0"><button class="btn gho" id="aAuto">dobierz termin sam</button></div>`;
+    const al = $("#aList");
+    al.querySelectorAll(".sopt").forEach(b=>b.onclick=()=>{
+      $("#aDate").value=b.dataset.d; $("#aTime").value=b.dataset.t; $("#aVenue").value=b.dataset.v;
+      al.querySelector(".sel")?.classList.remove("sel"); b.classList.add("sel");
     });
-  };
+    $("#aAuto").onclick = ()=>{
+      const w = $("#aP .sel")?.dataset.p || "oboje";
+      const o = bestSlot(picked.seanse, w, null, picked.runtime);
+      if(!o){ alert("żaden seans tego filmu nie mieści się bez kolizji — trzeba coś przestawić albo odpuścić"); return; }
+      $("#aDate").value=o.date; $("#aTime").value=o.time; $("#aVenue").value=o.venue||"";
+      al.querySelectorAll(".sopt").forEach(b=> b.classList.toggle("sel", b.dataset.d===o.date && b.dataset.t===o.time));
+    };
+  }
+
+  // --- przypnij film z programu: uzupełnij dane, pokaż seanse ---
+  function pick(t){
+    picked = {
+      title:t.tytulPl, mt:t.tytulPl, slug:t.slug,
+      runtime:t.czasTrwania?Math.round(t.czasTrwania):null,
+      opis:t.opis||"", rezyser:t.rezyser||"",
+      seanse:(t.seanse||[]).map(s=>{ const dt=apiDT(s.dataCzas); return dt?{date:dt.date,time:dt.time,venue:s.sala}:null; }).filter(Boolean),
+      info:`${t.rezyser||""} ${t.rok?"· "+t.rok:""} ${t.czasTrwania?"· "+Math.round(t.czasTrwania)+" min":""}`
+    };
+    $("#aTitle").value = t.tytulPl;
+    $("#aSub").textContent = picked.info;
+    $("#aSug").innerHTML = "";
+    $("#aPickedInfo").style.display = "block";
+    // jeśli tylko jeden seans — wybierz go od razu
+    if(picked.seanse.length===1){ const o=picked.seanse[0]; $("#aDate").value=o.date; $("#aTime").value=o.time; $("#aVenue").value=o.venue||""; }
+    else { $("#aDate").value=""; $("#aTime").value=""; $("#aVenue").value=""; }
+    renderSeanse();
+    if(picked.seanse.length===1){ setTimeout(()=>{ const b=$("#aList")?.querySelector(".sopt"); b&&b.classList.add("sel"); },0); }
+  }
+  function unpick(){
+    picked = null;
+    $("#aSub").textContent = "własny film — wpisz dane ręcznie";
+    $("#aPickedInfo").style.display = "none";
+    $("#aSeansWrap").innerHTML = "";
+  }
+
+  // --- podpowiedzi w miarę pisania ---
+  function suggest(q){
+    const box = $("#aSug");
+    if(!program || !q || q.trim().length<2){ box.innerHTML=""; return; }
+    const qq = nrm(q);
+    let list = (program.tytuly||[]).filter(t=>t.film!==false)
+      .filter(t=> nrm(t.tytulPl).includes(qq) || nrm(t.tytulOrg||"").includes(qq) || nrm(t.tytulEn||"").includes(qq));
+    // dokładne trafienie = auto-przypięcie, jeśli jest jedyne
+    const exact = list.filter(t=> nrm(t.tytulPl)===qq);
+    if(exact.length===1){ pick(exact[0]); return; }
+    list = list.slice(0,6);
+    if(!list.length){ box.innerHTML = `<div class="sugNone">brak w programie — zostanie dodany jako własny film</div>`; return; }
+    box.innerHTML = list.map(t=>{
+      const cnt=(t.seanse||[]).length;
+      return `<button class="sugItem" data-slug="${t.slug}">${t.tytulPl}<span class="sugMeta">${t.rezyser||""} · ${cnt} seans${cnt===1?"":cnt<5?"e":"ów"}</span></button>`;
+    }).join("");
+    box.querySelectorAll(".sugItem").forEach(b=>b.onclick=()=>{
+      const t=(program.tytuly||[]).find(x=>x.slug===b.dataset.slug); if(t) pick(t);
+    });
+  }
+
+  $("#aTitle").oninput = ()=>{ if(picked) unpick(); suggest($("#aTitle").value); };
+  $("#aUnpick").onclick = ()=>{ unpick(); $("#aTitle").focus(); };
+  $("#aSt").querySelectorAll(".seg").forEach(b=>b.onclick=()=>{ $("#aSt .sel")?.classList.remove("sel"); b.classList.add("sel"); });
+  $("#aP").querySelectorAll(".seg").forEach(b=>b.onclick=()=>{ $("#aP .sel")?.classList.remove("sel"); b.classList.add("sel"); renderSeanse(); });
   $("#aCancel").onclick = closeSheet;
+
+  // jeśli otwarto z programu (pre miało seanse) — pokaż je od razu
+  if(picked) renderSeanse();
+
   $("#aSave").onclick = ()=>{
-    const title = pre.title || ($("#aTitle") ? $("#aTitle").value.trim() : "");
+    const title = ($("#aTitle").value||"").trim();
     if(!title){ alert("podaj tytuł"); return; }
     const who = $("#aP .sel").dataset.p;
-    // ten sam film może już siedzieć w planie u drugiej osoby — dołącz zamiast dublować
-    const dup = entries.find(x=> nrm(x.mt||x.title) === nrm(pre.mt||title));
+    const src = picked || {};
+    const dup = entries.find(x=> nrm(x.mt||x.title) === nrm(src.mt||title));
     if(dup){
       if(dup.person !== who && dup.person !== "oboje" && who !== "oboje"){
         if(confirm(dup.title+" ma już w planie "+dup.person+" ("+(dup.date?DOW[dup.date]+" "+fmtDay(dup.date)+" "+dup.time:"bez terminu")+"). ustawić na oboje zamiast dodawać drugi raz?")){
@@ -1033,12 +1152,12 @@ function openAdd(pre){
     const en = E(title, $("#aSt .sel").dataset.s, $("#aDate").value||null, $("#aTime").value||null, $("#aVenue").value||null);
     en.id = newId(); touch(en);
     en.person = who;
-    if(pre.runtime) en.runtime = pre.runtime;
-    if(pre.seanse) en.alts = pre.seanse;
-    if(pre.mt) en.mt = pre.mt;
-    if(pre.opis) en.opis = pre.opis;
-    if(pre.rezyser) en.rezyser = pre.rezyser;
-    if(pre.slug) en.slug = pre.slug;
+    if(src.runtime) en.runtime = src.runtime;
+    if(src.seanse) en.alts = src.seanse;
+    if(src.mt) en.mt = src.mt;
+    if(src.opis) en.opis = src.opis;
+    if(src.rezyser) en.rezyser = src.rezyser;
+    if(src.slug) en.slug = src.slug;
     entries.push(en);
     if(en.date && en.time && en.status!=="opcja") offerMoves(en);
     save(); closeSheet(); render();
