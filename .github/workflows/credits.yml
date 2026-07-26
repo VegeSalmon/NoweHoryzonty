@@ -1,0 +1,90 @@
+name: credits
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Ile tytułów pobrać (0 = wszystkie). Zacznij od 5."
+        required: true
+        default: "5"
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install requests beautifulsoup4 lxml
+
+      - name: scrape
+        env:
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          cat > scrape.py <<'PYEOF'
+          import json, re, csv, os, time, random, requests
+          from bs4 import BeautifulSoup
+
+          ROLE = ["reżyseria","scenariusz","zdjęcia","montaż","muzyka",
+                  "dźwięk","producent","produkcja","obsada"]
+          HEAD = {"User-Agent":"Mozilla/5.0 (NH program research)"}
+
+          def parse_credits(html):
+              soup = BeautifulSoup(html, "lxml")
+              for t in soup(["script","style"]): t.decompose()
+              text = re.sub(r"[ \t\xa0]+"," ", soup.get_text("\n"))
+              m = re.search(r"reżyseria(.{0,4000}?)(właściciel praw|język|barwa)",
+                            text, re.S|re.I)
+              if not m: return {}
+              blob = ("reżyseria" + m.group(1)).replace("\n"," ")
+              hits = sorted([(mm.start(), r) for r in ROLE
+                             for mm in re.finditer(rf"\b{r}\b", blob, re.I)])
+              out = {}
+              for i,(pos,role) in enumerate(hits):
+                  end = hits[i+1][0] if i+1 < len(hits) else len(blob)
+                  val = blob[pos+len(role):end].strip(" ·,;")
+                  if val and role not in out:
+                      out[role] = re.sub(r"\s+"," ", val)
+              return out
+
+          data = json.load(open("program.json", encoding="utf-8"))
+          rows = [t for t in data["tytuly"]
+                  if t.get("rodzaj") in ("film","film_laureat") and t.get("www")]
+          lim = int(os.environ.get("LIMIT","5") or 0)
+          if lim: rows = rows[:lim]
+          print(f"pobieram {len(rows)} stron")
+
+          ses = requests.Session(); ses.headers.update(HEAD)
+          with open("credits.csv","w",newline="",encoding="utf-8") as fh:
+              w = csv.writer(fh)
+              w.writerow(["tytul_pl","rok","kraj","sekcja","url"]+ROLE+["blad"])
+              for i,t in enumerate(rows,1):
+                  cred, err = {}, ""
+                  try:
+                      r = ses.get(t["www"], timeout=25); r.raise_for_status()
+                      cred = parse_credits(r.text)
+                      if not cred: err = "brak bloku creditsow"
+                  except Exception as e:
+                      err = f"{type(e).__name__}: {e}"
+                  w.writerow([t.get("tytulPl"),t.get("rok"),t.get("kraj"),
+                              t.get("glownaSekcja"),t["www"]]
+                             +[cred.get(x,"") for x in ROLE]+[err])
+                  print(f"[{i}/{len(rows)}] {t.get('tytulPl')[:40]} "
+                        f"{'OK' if cred else 'PUSTE'} {err}")
+                  time.sleep(random.uniform(1.0,2.0))
+          PYEOF
+          python scrape.py
+
+      - name: commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add credits.csv
+          git commit -m "credits.csv (limit=${{ inputs.limit }})" || echo "bez zmian"
+          git push
