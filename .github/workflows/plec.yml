@@ -1,0 +1,106 @@
+name: plec
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Ile osób odpytać (0 = wszystkie ~1100). Zacznij od 30."
+        required: true
+        default: "30"
+
+permissions:
+  contents: write
+
+jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests
+
+      - name: wikidata
+        env:
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          cat > plec.py <<'PYEOF'
+          import csv, re, os, time, requests
+
+          ROLES = ["reżyseria","scenariusz","zdjęcia","montaż","muzyka"]
+          API = "https://www.wikidata.org/w/api.php"
+          HEAD = {"User-Agent":"NH-program-research/1.0 (github actions)"}
+          # zawody filmowe: reżyser, scenarzysta, operator, montażysta, kompozytor,
+          # producent, artysta, pisarz, muzyk
+          FILMY = {"Q2526255","Q28389","Q222344","Q7042855","Q36834",
+                   "Q3282637","Q483501","Q36180","Q639669","Q10800557","Q10798782"}
+          PLEC = {"Q6581097":"M","Q6581072":"K","Q1097630":"NB","Q48270":"NB",
+                  "Q1052281":"K","Q2449503":"M"}
+
+          def strip(n):
+              return re.sub(r"\s+(FSF|PSC|ASC|BSC|AFC|SBC|PSM)\b","", n).strip()
+
+          def split(s):
+              return [strip(x) for x in re.split(r",| oraz | i (?=[A-ZŻŹĆĄŚĘŁÓŃ])", s or "")
+                      if x.strip()]
+
+          names = set()
+          for r in csv.DictReader(open("credits.csv", encoding="utf-8")):
+              for role in ROLES:
+                  names.update(x for x in split(r.get(role,"")) if len(x) > 3)
+          names = sorted(names)
+          lim = int(os.environ.get("LIMIT","30") or 0)
+          if lim: names = names[:lim]
+          print(f"odpytuję {len(names)} osób")
+
+          ses = requests.Session(); ses.headers.update(HEAD)
+
+          def search(n):
+              p = {"action":"wbsearchentities","search":n,"language":"en",
+                   "uselang":"en","format":"json","limit":5,"type":"item"}
+              return ses.get(API, params=p, timeout=20).json().get("search",[])
+
+          def entity(qid):
+              p = {"action":"wbgetentities","ids":qid,"format":"json",
+                   "props":"claims|descriptions|labels","languages":"en|pl"}
+              return ses.get(API, params=p, timeout=20).json()["entities"][qid]
+
+          out = open("plec.csv","w",newline="",encoding="utf-8")
+          w = csv.writer(out)
+          w.writerow(["osoba","qid","opis","plec","filmowiec","pewnosc"])
+          for i, n in enumerate(names, 1):
+              qid = desc = g = ""; film = False; conf = "brak"
+              try:
+                  for hit in search(n):
+                      e = entity(hit["id"])
+                      cl = e.get("claims",{})
+                      if "P21" not in cl:      # bez płci = pewnie nie osoba
+                          continue
+                      occ = {c["mainsnak"]["datavalue"]["value"]["id"]
+                             for c in cl.get("P106",[])
+                             if c["mainsnak"].get("datavalue")}
+                      isfilm = bool(occ & FILMY)
+                      gq = cl["P21"][0]["mainsnak"]["datavalue"]["value"]["id"]
+                      cand = (hit["id"], hit.get("description",""), PLEC.get(gq,gq), isfilm)
+                      if isfilm:
+                          qid, desc, g, film = cand; conf = "wysoka"; break
+                      if not qid:
+                          qid, desc, g, film = cand; conf = "niska (zawód nie filmowy)"
+              except Exception as e:
+                  desc = f"blad: {type(e).__name__}"
+              w.writerow([n, qid, desc, g, "tak" if film else "nie", conf])
+              out.flush()
+              if i % 25 == 0: print(f"[{i}/{len(names)}]")
+              time.sleep(0.35)
+          out.close()
+          PYEOF
+          python plec.py
+
+      - name: commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add plec.csv
+          git commit -m "plec.csv (limit=${{ inputs.limit }})" || echo "bez zmian"
+          git push
