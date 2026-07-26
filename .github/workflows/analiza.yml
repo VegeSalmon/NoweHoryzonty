@@ -1,0 +1,149 @@
+name: analiza
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  licz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: licz
+        run: |
+          cat > analiza.py <<'PYEOF'
+          import csv, re, collections
+
+          ROLE = ["reżyseria","scenariusz","zdjęcia","montaż","muzyka","dźwięk",
+                  "producent","kostiumy","scenografia","charakteryzacja"]
+          GUILD = r"\s+(FSF|PSC|ASC|BSC|AFC|SBC|PSM)\b"
+
+          def split(s, ile=None):
+              out = []
+              for x in re.split(r",| oraz | i (?=[A-ZŻŹĆĄŚĘŁÓŃ])", s or ""):
+                  x = re.sub(GUILD, "", x).strip(" ·;")
+                  if len(x) > 3 and not re.search(r"\d", x):
+                      out.append(x)
+                  if ile and len(out) >= ile: break
+              return out
+
+          # slownik plci; bierzemy tylko trafienia oznaczone jako filmowe,
+          # reszta ida do "nieustalone" - imiennik z innej branzy to nie dowod
+          PL = {}
+          for r in csv.DictReader(open("plec.csv", encoding="utf-8")):
+              if r["plec"] in ("K","M","NB") and r["filmowiec"] == "tak":
+                  PL[r["osoba"]] = r["plec"]
+
+          filmy = list(csv.DictReader(open("credits.csv", encoding="utf-8")))
+
+          def kategoria(names):
+              if not names: return None
+              g = [PL.get(n) for n in names]
+              if any(x is None for x in g): return "?"
+              K = sum(1 for x in g if x == "K")
+              if K == len(g): return "K"
+              if K == 0: return "M"
+              return "KM"
+
+          out = []
+          lines = ["# Reprezentacja kobiet w programie 26. MFF Nowe Horyzonty", "",
+                   f"Pozycji filmowych: **{len(filmy)}**. "
+                   f"Osób rozpoznanych w Wikidacie: **{len(PL)}**.", "",
+                   "Mianownik dla każdego rzędu to filmy, w których credit istnieje "
+                   "**i** wszystkie osoby udało się rozstrzygnąć. "
+                   "Kolumna „nieustalone” to filmy wypadające z rachunku — "
+                   "jeśli jest duża, procent obok niej jest mało wart.", "",
+                   "| rola | credit jest | rozstrzygnięte | tylko K | K+M | tylko M | % K lub K+M | nieustalone |",
+                   "|---|---|---|---|---|---|---|---|"]
+
+          for role in ROLE:
+              c = collections.Counter()
+              for f in filmy:
+                  k = kategoria(split(f.get(role, "")))
+                  if k: c[k] += 1
+              n = sum(c.values()); res = n - c["?"]
+              if not n: continue
+              pct = f"{(c['K']+c['KM'])/res*100:.1f}%" if res else "—"
+              lines.append(f"| {role} | {n}/{len(filmy)} | {res} ({res/n*100:.0f}%) | "
+                           f"{c['K']} | {c['KM']} | {c['M']} | **{pct}** | {c['?']} |")
+
+          # --- osobno: czy pierwsza osoba w obsadzie to kobieta
+          lead = collections.Counter()
+          for f in filmy:
+              names = split(f.get("obsada",""), 1)
+              if not names: lead["brak obsady"] += 1; continue
+              lead[PL.get(names[0], "nieustalona")] += 1
+          tot = sum(v for k, v in lead.items() if k in ("K","M","NB"))
+          lines += ["", "## Pierwsza osoba w obsadzie", "",
+                    f"- kobieta: **{lead['K']}**",
+                    f"- mężczyzna: **{lead['M']}**",
+                    f"- osoba niebinarna: {lead['NB']}",
+                    f"- nieustalona: {lead['nieustalona']}",
+                    f"- film bez obsady (dokument, animacja, eksperyment): {lead['brak obsady']}",
+                    "",
+                    f"Wśród rozstrzygniętych: **{lead['K']/tot*100:.1f}%** kobiet."
+                    if tot else "",
+                    "",
+                    "> UWAGA: to jest kolejność z creditsów, czyli zwykle kolejność "
+                    "afiszowa — a nie to samo co „główna bohaterka”. Film może otwierać "
+                    "listę nazwiskiem gwiazdy w roli drugoplanowej, a w dokumentach "
+                    "obsada bywa przypadkowa. Traktuj to jako wskaźnik zastępczy "
+                    "i zweryfikuj ręcznie tam, gdzie ma to znaczyć coś więcej."]
+
+          # --- przekroj po sekcjach dla rezyserii
+          sek = collections.defaultdict(lambda: [0, 0])
+          for f in filmy:
+              k = kategoria(split(f.get("reżyseria","")))
+              if k in (None, "?"): continue
+              s = f.get("sekcja") or "?"
+              sek[s][1] += 1
+              if k in ("K","KM"): sek[s][0] += 1
+          lines += ["", "## Reżyseria wg sekcji (min. 5 rozstrzygniętych filmów)", "",
+                    "| sekcja | K lub K+M | rozstrzygniętych | % |", "|---|---|---|---|"]
+          for s,(k,n) in sorted(sek.items(), key=lambda kv: -kv[1][1]):
+              if n >= 5:
+                  lines.append(f"| {s} | {k} | {n} | {k/n*100:.0f}% |")
+
+          open("wyniki.md","w",encoding="utf-8").write("\n".join(lines) + "\n")
+
+          # --- plik szczegolowy: jeden wiersz na film
+          with open("analiza.csv","w",newline="",encoding="utf-8") as fh:
+              w = csv.writer(fh)
+              w.writerow(["tytul_pl","rok","sekcja"] + ROLE +
+                         ["pierwsza_w_obsadzie","plec_pierwszej"])
+              for f in filmy:
+                  first = split(f.get("obsada",""), 1)
+                  w.writerow([f.get("tytul_pl"), f.get("rok"), f.get("sekcja")]
+                             + [kategoria(split(f.get(r,""))) or "" for r in ROLE]
+                             + [first[0] if first else "",
+                                PL.get(first[0],"") if first else ""])
+
+          # --- kto zostal nierozpoznany, posortowane wg tego ile filmow psuje
+          brak = collections.Counter()
+          for f in filmy:
+              for role in ROLE + ["obsada"]:
+                  ile = 1 if role == "obsada" else None
+                  for n in split(f.get(role,""), ile):
+                      if n not in PL: brak[n] += 1
+          with open("nierozpoznani.csv","w",newline="",encoding="utf-8") as fh:
+              w = csv.writer(fh); w.writerow(["osoba","w_ilu_creditsach"])
+              for n,c in brak.most_common(): w.writerow([n,c])
+
+          print(f"gotowe: {len(PL)} osob w slowniku, {len(brak)} nierozpoznanych")
+          PYEOF
+          python analiza.py
+          cat wyniki.md
+
+      - name: commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add wyniki.md analiza.csv nierozpoznani.csv
+          git commit -m "wyniki analizy" || echo "bez zmian"
+          git push

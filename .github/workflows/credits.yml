@@ -16,11 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - run: pip install requests beautifulsoup4 lxml
 
       - name: scrape
@@ -31,20 +29,30 @@ jobs:
           import json, re, csv, os, time, random, requests
           from bs4 import BeautifulSoup
 
-          ROLE = ["reżyseria","scenariusz","zdjęcia","montaż","muzyka",
-                  "dźwięk","producent","produkcja","obsada"]
-          HEAD = {"User-Agent":"Mozilla/5.0 (NH program research)"}
+          # PEŁNA lista etykiet ze stron NH. Wersja 1 miała tylko dziewięć
+          # pierwszych - przez co kostiumy/scenografia/charakteryzacja doklejały
+          # się do poprzedniego pola. Kolejność bez znaczenia, ważna kompletność:
+          # każda nieznana etykieta = śmieci w sąsiedniej kolumnie.
+          ROLE = ["reżyseria","scenariusz","zdjęcia","montaż","muzyka","dźwięk",
+                  "producent","produkcja","obsada","kostiumy","scenografia",
+                  "charakteryzacja","casting","animacja","efekty","dystrybutor",
+                  "właściciel praw","język","barwa","format"]
+          # gdzie urwać blok - dalej zaczyna się rozkład seansów
+          STOP = r"(Seanse|Cena biletu|Cena dostępu|Spotkanie z twórcami|Dostępność online)"
+          HEAD = {"User-Agent":"NH26-program-research/2.0 "
+                                "(https://github.com/VegeSalmon/NoweHoryzonty)"}
 
           def parse_credits(html):
               soup = BeautifulSoup(html, "lxml")
               for t in soup(["script","style"]): t.decompose()
               text = re.sub(r"[ \t\xa0]+"," ", soup.get_text("\n"))
-              m = re.search(r"reżyseria(.{0,4000}?)(właściciel praw|język|barwa)",
-                            text, re.S|re.I)
-              if not m: return {}
+              m = re.search(r"reżyseria(.{0,6000}?)" + STOP, text, re.S|re.I)
+              if not m:
+                  m = re.search(r"reżyseria(.{0,6000})", text, re.S|re.I)
+                  if not m: return {}
               blob = ("reżyseria" + m.group(1)).replace("\n"," ")
               hits = sorted([(mm.start(), r) for r in ROLE
-                             for mm in re.finditer(rf"\b{r}\b", blob, re.I)])
+                             for mm in re.finditer(rf"\b{re.escape(r)}\b", blob, re.I)])
               out = {}
               for i,(pos,role) in enumerate(hits):
                   end = hits[i+1][0] if i+1 < len(hits) else len(blob)
@@ -75,7 +83,7 @@ jobs:
                   w.writerow([t.get("tytulPl"),t.get("rok"),t.get("kraj"),
                               t.get("glownaSekcja"),t["www"]]
                              +[cred.get(x,"") for x in ROLE]+[err])
-                  print(f"[{i}/{len(rows)}] {t.get('tytulPl')[:40]} "
+                  print(f"[{i}/{len(rows)}] {t.get('tytulPl')[:38]} "
                         f"{'OK' if cred else 'PUSTE'} {err}")
                   time.sleep(random.uniform(1.0,2.0))
           PYEOF
@@ -86,5 +94,5 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add credits.csv
-          git commit -m "credits.csv (limit=${{ inputs.limit }})" || echo "bez zmian"
+          git commit -m "credits.csv v2 (limit=${{ inputs.limit }})" || echo "bez zmian"
           git push
